@@ -130,7 +130,9 @@ export class UserRepository {
           LIMIT 1;
         `;
         const result = await query<User>(sql, [cleanId]);
-        return result.rows[0] || null;
+        if (result.rows && result.rows.length > 0) {
+          return result.rows[0];
+        }
       } catch (err) {
         // Fallback to memory
       }
@@ -149,7 +151,9 @@ export class UserRepository {
       try {
         const sql = `SELECT * FROM users WHERE id = $1 LIMIT 1;`;
         const result = await query<User>(sql, [id]);
-        return result.rows[0] || null;
+        if (result.rows && result.rows.length > 0) {
+          return result.rows[0];
+        }
       } catch (err) {
         // Fallback to memory
       }

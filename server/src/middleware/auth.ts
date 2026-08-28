@@ -6,6 +6,7 @@ import { AuthTokenPayload } from '../types/auth.types';
 import { UserRole, UserStatus } from '../types/user.types';
 import { query } from '../config/database';
 import { validateDatabaseEnv } from '../config/env';
+import { memoryUsers } from '../repositories/user.repository';
 
 // Extend Express Request type to carry authenticated user details
 declare global {
@@ -45,44 +46,47 @@ export const authenticateToken = async (
         );
 
         if (userCheck.rowCount === 0) {
-          ResponseUtil.error(res, 'الحساب غير موجود', 401, 'ACCOUNT_NOT_FOUND');
-          return;
-        }
+          const memUser = memoryUsers.find((u) => u.id === decoded.userId);
+          if (!memUser) {
+            ResponseUtil.error(res, 'الحساب غير موجود', 401, 'ACCOUNT_NOT_FOUND');
+            return;
+          }
+        } else {
+          const userRecord = userCheck.rows[0];
+          if (userRecord.status === 'PENDING_APPROVAL') {
+            ResponseUtil.error(
+              res,
+              'الحساب في انتظار موافقة مدير النظام، لا يمكن تسجيل الدخول بعد',
+              403,
+              'ACCOUNT_PENDING_APPROVAL'
+            );
+            return;
+          }
 
-        const userRecord = userCheck.rows[0];
-        if (userRecord.status === 'PENDING_APPROVAL') {
-          ResponseUtil.error(
-            res,
-            'الحساب في انتظار موافقة مدير النظام، لا يمكن تسجيل الدخول بعد',
-            403,
-            'ACCOUNT_PENDING_APPROVAL'
-          );
-          return;
-        }
+          if (userRecord.status === 'INACTIVE') {
+            ResponseUtil.error(
+              res,
+              'تم تعطيل هذا الحساب، يرجى التواصل مع الإدارة',
+              403,
+              'ACCOUNT_INACTIVE'
+            );
+            return;
+          }
 
-        if (userRecord.status === 'INACTIVE') {
-          ResponseUtil.error(
-            res,
-            'تم تعطيل هذا الحساب، يرجى التواصل مع الإدارة',
-            403,
-            'ACCOUNT_INACTIVE'
-          );
-          return;
-        }
+          if (userRecord.status === 'REJECTED') {
+            ResponseUtil.error(
+              res,
+              'تم رفض طلب التسجيل لهذا الحساب',
+              403,
+              'ACCOUNT_REJECTED'
+            );
+            return;
+          }
 
-        if (userRecord.status === 'REJECTED') {
-          ResponseUtil.error(
-            res,
-            'تم رفض طلب التسجيل لهذا الحساب',
-            403,
-            'ACCOUNT_REJECTED'
-          );
-          return;
+          decoded.status = userRecord.status;
+          decoded.role = userRecord.role_code;
+          decoded.customerId = userRecord.customer_id;
         }
-
-        decoded.status = userRecord.status;
-        decoded.role = userRecord.role_code;
-        decoded.customerId = userRecord.customer_id;
       } catch (dbErr) {
         // Fallback gracefully if database query is temporarily unreachable
       }
