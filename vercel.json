@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "npm --prefix client run build",
+  "buildCommand": "node -e \"const fs=require('fs'),cp=require('child_process'); if(fs.existsSync('client/package.json')){cp.execSync('npm --prefix client run build',{stdio:'inherit'})}else{cp.execSync('npm run build',{stdio:'inherit'})}\"",
   "outputDirectory": "client/dist",
   "rewrites": [
     {
