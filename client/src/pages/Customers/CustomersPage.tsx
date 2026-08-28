@@ -11,6 +11,7 @@ import {
   Package,
   Trash2,
   Edit2,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { customerService, CustomerFilters } from '../../services/api/customerService';
@@ -19,6 +20,7 @@ import { productService, Product } from '../../services/api/productService';
 import { invoiceService } from '../../services/api/invoiceService';
 import { Customer, CustomerClassification, PaymentType } from '../../types/financial';
 import { User } from '../../types/auth';
+import { MonthlyExcelSheetModal } from '../../components/customers/MonthlyExcelSheetModal';
 import './CustomersPage.css';
 
 interface CustomersPageProps {
@@ -53,6 +55,8 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
   // Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+  const [selectedCustomerForSheet, setSelectedCustomerForSheet] = useState<string | null>(null);
   const [targetCustomer, setTargetCustomer] = useState<Customer | null>(null);
 
   // Form State - Create Customer
@@ -382,16 +386,37 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
 
   return (
     <div className="customers-page-container">
-      {/* Header with Title and Create Action */}
+      {/* Header with Title and Actions */}
       <div className="page-header-row">
         <div>
           <h1 className="page-main-title">سجل العملاء ومناطق التوزيع</h1>
           <p className="page-sub-title">إدارة بيانات العملاء، شروط السداد، ومتابعة الأرصدة والمسؤوليات</p>
         </div>
-        <button onClick={() => { setIsCreateModalOpen(true); fetchProducts(); }} className="btn-gold">
-          <Plus size={16} />
-          <span>إضافة عميل جديد</span>
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => {
+              setSelectedCustomerForSheet(null);
+              setIsExcelModalOpen(true);
+            }}
+            className="btn-gold"
+            style={{
+              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+              color: '#ffffff',
+              border: '1px solid #10b981',
+              boxShadow: '0 2px 6px rgba(5, 150, 105, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <FileSpreadsheet size={18} />
+            <span>📊 شيت متابعة حسابات العملاء 2026</span>
+          </button>
+          <button onClick={() => { setIsCreateModalOpen(true); fetchProducts(); }} className="btn-gold">
+            <Plus size={16} />
+            <span>إضافة عميل جديد</span>
+          </button>
+        </div>
       </div>
 
       {/* Feedback Message */}
@@ -551,6 +576,29 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
                     </td>
                     <td>
                       <div className="row-actions-group">
+                        <button
+                          onClick={() => {
+                            setSelectedCustomerForSheet(c.customer_code);
+                            setIsExcelModalOpen(true);
+                          }}
+                          className="btn-action-icon"
+                          style={{
+                            background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                            color: '#92400e',
+                            border: '1px solid #f59e0b',
+                            fontWeight: 'bold',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                          }}
+                          title="عرض كشف الشهور والمعاملات لعام 2026"
+                        >
+                          <FileSpreadsheet size={14} />
+                          <span style={{ fontSize: '0.74rem' }}>كشف الشهور 2026</span>
+                        </button>
                         {onNavigate && (
                           <button
                             onClick={() => onNavigate(`/customers/${c.id}`)}
@@ -1164,6 +1212,14 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
           </div>
         </div>
       )}
+
+      {/* 2026 Monthly Transactions Excel Sheet Modal */}
+      <MonthlyExcelSheetModal
+        isOpen={isExcelModalOpen}
+        onClose={() => setIsExcelModalOpen(false)}
+        selectedCustomerCode={selectedCustomerForSheet}
+        onViewCustomerDetails={(id) => onNavigate?.(`/customers/${id}`)}
+      />
     </div>
   );
 };

@@ -12,6 +12,7 @@ import {
   PlusCircle,
   Filter,
   AlertCircle,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { customerService } from '../../services/api/customerService';
 import { statementService } from '../../services/api/statementService';
@@ -29,6 +30,7 @@ import {
   AssignmentType,
 } from '../../types/financial';
 import { User as SystemUser } from '../../types/auth';
+import { EXCEL_CUSTOMERS_2026, MONTH_KEYS } from '../../constants/monthlyData';
 import './CustomerDetailsPage.css';
 
 interface CustomerDetailsPageProps {
@@ -396,6 +398,116 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
       {/* TAB 1: STATEMENT (كشف الحساب) */}
       {activeTab === 'statement' && (
         <div className="tab-content-wrapper">
+          {/* 2026 Monthly Visual Bar */}
+          {(() => {
+            const excelCustomer = EXCEL_CUSTOMERS_2026.find(
+              (item) =>
+                item.code === customer.customer_code ||
+                item.name === customer.name ||
+                item.id === customer.id
+            );
+            if (!excelCustomer) return null;
+
+            const annualSum = MONTH_KEYS.reduce(
+              (sum, k) => sum + (excelCustomer.months[k] || 0),
+              0
+            );
+
+            return (
+              <div
+                className="sheikh-card mb-3"
+                style={{
+                  padding: '16px 20px',
+                  background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+                  border: '1px solid #cbd5e1',
+                  marginBottom: '1rem',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '12px',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FileSpreadsheet size={18} style={{ color: '#059669' }} />
+                    <strong style={{ fontSize: '0.95rem', color: '#0f172a' }}>
+                      سجل مسحوبات العميل الشهرية لعام 2026 (مطابقة شيت الحسابات):
+                    </strong>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '0.85rem',
+                      background: '#fef3c7',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #fde68a',
+                      color: '#92400e',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    إجمالي مسحوبات عام 2026: {formatCurrency(annualSum)}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(85px, 1fr))',
+                    gap: '8px',
+                  }}
+                >
+                  {MONTH_KEYS.map((k, idx) => {
+                    const val = excelCustomer.months[k] || 0;
+                    const isCurrent = selectedMonth === idx + 1;
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => handleMonthlySelect(idx + 1)}
+                        style={{
+                          background: isCurrent ? '#fffbeb' : val > 0 ? '#ffffff' : '#f1f5f9',
+                          border: isCurrent ? '2px solid #f59e0b' : '1px solid #cbd5e1',
+                          borderRadius: '8px',
+                          padding: '8px 6px',
+                          textAlign: 'center',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '3px',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '0.72rem',
+                            color: '#64748b',
+                            fontWeight: 'bold',
+                          }}
+                        >
+                          {ARABIC_MONTHS[idx]}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '0.82rem',
+                            fontWeight: '800',
+                            fontFamily: 'monospace',
+                            color: val > 0 ? '#0f172a' : '#94a3b8',
+                          }}
+                        >
+                          {val > 0 ? Number(val).toLocaleString('ar-EG') : '0'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Statement Filters & Monthly Selector */}
           <div className="sheikh-card statement-filter-card">
             <div className="statement-controls-row">
