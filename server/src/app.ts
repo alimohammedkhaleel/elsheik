@@ -14,6 +14,16 @@ export const createApp = (): Application => {
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(requestLogger);
 
+  // Root Status Endpoint
+  app.get('/', (_req, res) => {
+    res.json({
+      status: 'online',
+      service: 'مؤسسة الشيخ - API Server',
+      version: '1.0.0',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   // Mount API Router
   app.use('/api', apiRouter);
 

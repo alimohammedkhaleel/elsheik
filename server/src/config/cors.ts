@@ -15,7 +15,12 @@ export const corsOptions: CorsOptions = {
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin) || env.NODE_ENV === 'development') {
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.vercel.app') ||
+      origin.includes('vercel.app') ||
+      env.NODE_ENV === 'development'
+    ) {
       return callback(null, true);
     }
 
