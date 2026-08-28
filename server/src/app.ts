@@ -26,6 +26,7 @@ export const createApp = (): Application => {
 
   // Mount API Router
   app.use('/api', apiRouter);
+  app.use('/', apiRouter);
 
   // Fallback 404 handler for unknown routes
   app.use(notFoundHandler);
