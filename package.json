@@ -3,19 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "description": "نظام إدارة ومتابعة عملاء التوزيع - مؤسسة الشيخ (Distribution Customer Management System)",
-  "workspaces": [
-    "client",
-    "server"
-  ],
   "scripts": {
-    "dev": "concurrently \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
-    "dev:client": "npm run dev --workspace=client",
-    "dev:server": "npm run dev --workspace=server",
-    "build": "npm run build --workspace=server && npm run build --workspace=client",
-    "build:client": "npm run build --workspace=client",
-    "build:server": "npm run build --workspace=server",
-    "typecheck": "npm run typecheck --workspace=server && npm run typecheck --workspace=client",
-    "test": "npm run test --workspace=server"
+    "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "dev:client": "npm --prefix client run dev",
+    "dev:server": "npm --prefix server run dev",
+    "build": "node -e \"const fs=require('fs'),cp=require('child_process'); if(fs.existsSync('client/package.json')){cp.execSync('npm --prefix client run build',{stdio:'inherit'})}else{cp.execSync('npm run build',{stdio:'inherit'})}\"",
+    "build:client": "npm --prefix client run build",
+    "build:server": "npm --prefix server run build",
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "typecheck": "npm --prefix client run typecheck"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

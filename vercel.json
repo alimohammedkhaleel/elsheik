@@ -1,9 +1,8 @@
 {
   "version": 2,
-  "buildCommand": "cd client && npm install && npm run build",
-  "outputDirectory": "client/dist",
-  "installCommand": "npm install",
-  "framework": null,
+  "buildCommand": "node -e \"const fs=require('fs'),cp=require('child_process'); if(fs.existsSync('client/package.json')){cp.execSync('npm --prefix client run build',{stdio:'inherit'})}else{cp.execSync('npm run build',{stdio:'inherit'})}\"",
+  "outputDirectory": "dist",
+  "framework": "vite",
   "rewrites": [
     {
       "source": "/api/(.*)",
