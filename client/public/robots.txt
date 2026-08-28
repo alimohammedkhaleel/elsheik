@@ -1,0 +1,14 @@
+# robots.txt - مؤسسة الشيخ | نظام إدارة ومتابعة العملاء
+User-agent: *
+Disallow: /admin/
+Disallow: /api/
+Disallow: /customers/
+Disallow: /invoices/
+Disallow: /payments/
+Disallow: /customer/
+Disallow: /approvals/
+Disallow: /bonuses/
+Disallow: /users/
+Disallow: /leaderboard/
+Allow: /
+Allow: /login

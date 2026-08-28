@@ -1,0 +1,35 @@
+{
+  "name": "distribution-management-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "نظام إدارة ومتابعة عملاء التوزيع - مؤسسة الشيخ (Distribution Customer Management System)",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
+    "dev:client": "npm run dev --workspace=client",
+    "dev:server": "npm run dev --workspace=server",
+    "build": "npm run build --workspace=server && npm run build --workspace=client",
+    "build:client": "npm run build --workspace=client",
+    "build:server": "npm run build --workspace=server",
+    "typecheck": "npm run typecheck --workspace=server && npm run typecheck --workspace=client",
+    "test": "npm run test --workspace=server"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": [
+    "distribution",
+    "customer-management",
+    "sheikh-foundation",
+    "erp",
+    "react",
+    "express",
+    "postgresql",
+    "neon"
+  ],
+  "author": "Sheikh Foundation Engineering Team",
+  "license": "UNLICENSED"
+}

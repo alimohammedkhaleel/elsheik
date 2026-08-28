@@ -1,0 +1,52 @@
+.sheikh-logo-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  user-select: none;
+}
+
+.sheikh-logo-img-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sheikh-logo-small .sheikh-logo-img-wrapper {
+  width: 32px;
+  height: 32px;
+}
+
+.sheikh-logo-medium .sheikh-logo-img-wrapper {
+  width: 44px;
+  height: 44px;
+}
+
+.sheikh-logo-large .sheikh-logo-img-wrapper {
+  width: 68px;
+  height: 68px;
+}
+
+.sheikh-logo-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.sheikh-logo-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.sheikh-brand-name {
+  font-family: var(--font-family-arabic);
+  font-weight: 800;
+  color: var(--color-text-primary);
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+
+.sheikh-system-name {
+  font-size: 0.72rem;
+  color: var(--color-gold-dark);
+  font-weight: 600;
+}

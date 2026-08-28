@@ -1,0 +1,10 @@
+/* Products Page Styling */
+.products-page-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.products-filter-card {
+  padding: 16px;
+}

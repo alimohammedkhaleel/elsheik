@@ -1,0 +1,54 @@
+/**
+ * Arabic Typography & Hierarchy System
+ */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-family-arabic);
+  color: var(--color-text-primary);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+h1 {
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: 1.4rem;
+  letter-spacing: -0.01em;
+}
+
+h3 {
+  font-size: 1.15rem;
+}
+
+h4 {
+  font-size: 1rem;
+}
+
+p {
+  color: var(--color-text-secondary);
+  font-size: 0.925rem;
+  line-height: 1.6;
+}
+
+small {
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary);
+}
+
+.text-gold {
+  color: var(--color-gold);
+}
+
+.text-dark-gold {
+  color: var(--color-gold-dark);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-muted {
+  color: var(--color-text-tertiary);
+}

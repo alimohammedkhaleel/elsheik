@@ -1,0 +1,75 @@
+/**
+ * Design Tokens & Theme Variables for مؤسسة الشيخ ERP
+ * Distribution Customer Management System
+ */
+:root {
+  /* Brand & Accent Colors */
+  --color-gold: #c9a227;
+  --color-gold-dark: #a88416;
+  --color-gold-light: #f5eed6;
+  --color-gold-muted: rgba(201, 162, 39, 0.12);
+
+  /* Monochrome & Surface Scale */
+  --color-bg: #ffffff;
+  --color-surface: #fafafa;
+  --color-surface-hover: #f3f3f3;
+  --color-surface-active: #ececec;
+
+  /* Typography & Foreground Colors */
+  --color-text-primary: #111111;
+  --color-text-secondary: #777777;
+  --color-text-tertiary: #999999;
+  --color-text-inverse: #ffffff;
+
+  /* Border & Dividers */
+  --color-border: #e8e8e8;
+  --color-border-subtle: #f0f0f0;
+  --color-border-focus: #c9a227;
+
+  /* Functional Status Colors (Subdued & Professional) */
+  --color-success: #1e824c;
+  --color-success-bg: #eafaf1;
+  --color-warning: #d97706;
+  --color-warning-bg: #fef3c7;
+  --color-error: #c0392b;
+  --color-error-bg: #fdeded;
+  --color-info: #2980b9;
+  --color-info-bg: #ebf5fb;
+
+  /* Typography Stacks */
+  --font-family-arabic: 'Cairo', 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-latin: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-base: var(--font-family-arabic);
+
+  /* Spacing Scale */
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+
+  /* Border Radius (Strictly minimal & professional) */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  /* Shadows (Subtle, purposeful ERP shadows) */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+
+  /* Dimensions */
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 72px;
+  --topbar-height: 64px;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+  --transition-slow: 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}

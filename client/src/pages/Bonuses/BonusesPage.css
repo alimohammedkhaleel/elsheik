@@ -1,0 +1,15 @@
+/* Bonuses Page Styling */
+.bonuses-page-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.bonus-type-pill {
+  font-size: 0.76rem;
+  font-weight: 700;
+  background-color: var(--color-background-alt);
+  border: 1px solid var(--color-border);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
