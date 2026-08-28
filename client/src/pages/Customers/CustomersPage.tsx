@@ -398,16 +398,8 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
               setSelectedCustomerForSheet(null);
               setIsExcelModalOpen(true);
             }}
-            className="btn-gold"
-            style={{
-              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-              color: '#ffffff',
-              border: '1px solid #10b981',
-              boxShadow: '0 2px 6px rgba(5, 150, 105, 0.25)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
+            className="btn-header-monthly-sheet"
+            title="عرض شيت متابعة حسابات العملاء الشهري 2026"
           >
             <FileSpreadsheet size={18} />
             <span>📊 شيت متابعة حسابات العملاء 2026</span>
@@ -581,23 +573,11 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
                             setSelectedCustomerForSheet(c.customer_code);
                             setIsExcelModalOpen(true);
                           }}
-                          className="btn-action-icon"
-                          style={{
-                            background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
-                            color: '#92400e',
-                            border: '1px solid #f59e0b',
-                            fontWeight: 'bold',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '4px 8px',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                          }}
+                          className="btn-monthly-statement"
                           title="عرض كشف الشهور والمعاملات لعام 2026"
                         >
-                          <FileSpreadsheet size={14} />
-                          <span style={{ fontSize: '0.74rem' }}>كشف الشهور 2026</span>
+                          <FileSpreadsheet size={15} />
+                          <span>كشف الشهور</span>
                         </button>
                         {onNavigate && (
                           <button

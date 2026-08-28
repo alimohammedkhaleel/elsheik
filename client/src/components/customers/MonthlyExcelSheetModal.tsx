@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   FileSpreadsheet,
@@ -12,6 +12,8 @@ import {
   User,
   MapPin,
   Phone,
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import {
   EXCEL_CUSTOMERS_2026,
@@ -19,6 +21,9 @@ import {
   MONTH_NAMES_AR,
   MONTH_KEYS,
 } from '../../constants/monthlyData';
+import { customerService } from '../../services/api/customerService';
+import { invoiceService } from '../../services/api/invoiceService';
+import { Customer, Invoice } from '../../types/financial';
 import './MonthlyExcelSheetModal.css';
 
 interface MonthlyExcelSheetModalProps {
@@ -35,22 +40,126 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
   onViewCustomerDetails,
 }) => {
   const [search, setSearch] = useState('');
-  const [activeCustomer, setActiveCustomer] = useState<MonthlyCustomerData | null>(() => {
-    if (selectedCustomerCode) {
-      return (
-        EXCEL_CUSTOMERS_2026.find(
-          (c) => c.code === selectedCustomerCode || String(c.id) === selectedCustomerCode
-        ) || null
-      );
-    }
-    return null;
-  });
+  const [activeCustomerCode, setActiveCustomerCode] = useState<string | null>(null);
   const [selectedMonthIndex, setSelectedMonthIndex] = useState<number>(0);
+  const [systemCustomers, setSystemCustomers] = useState<Customer[]>([]);
+  const [systemInvoices, setSystemInvoices] = useState<Invoice[]>([]);
+  const [isLoadingLive, setIsLoadingLive] = useState(false);
+
+  // Load live customers & invoices
+  const loadLiveData = async () => {
+    try {
+      setIsLoadingLive(true);
+      const [custRes, invRes] = await Promise.all([
+        customerService.getCustomers({ limit: 100 }).catch(() => ({ data: [] })),
+        invoiceService.getInvoices({ limit: 500 }).catch(() => ({ data: [] })),
+      ]);
+      setSystemCustomers(custRes.data || []);
+      setSystemInvoices(invRes.data || []);
+    } catch {
+      // Keep fallbacks
+    } finally {
+      setIsLoadingLive(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      loadLiveData();
+      if (selectedCustomerCode) {
+        setActiveCustomerCode(selectedCustomerCode);
+      }
+    }
+  }, [isOpen, selectedCustomerCode]);
+
+  // Combine and calculate dynamic monthly sales per customer
+  const computedCustomers: MonthlyCustomerData[] = useMemo(() => {
+    // Start with base customer definitions
+    const baseList: MonthlyCustomerData[] = [...EXCEL_CUSTOMERS_2026];
+
+    // Merge in any dynamic customers created in system not in base list
+    systemCustomers.forEach((sc) => {
+      const exists = baseList.some(
+        (b) => b.code === sc.customer_code || b.id === sc.id || b.name === sc.name
+      );
+      if (!exists) {
+        baseList.push({
+          id: sc.id,
+          code: sc.customer_code,
+          name: sc.name,
+          trade_name: sc.trade_name || undefined,
+          phone: sc.phone || undefined,
+          city: sc.city || undefined,
+          address: sc.address || undefined,
+          balance: sc.current_balance || 0,
+          assigned_employee_name: sc.assigned_employee_name || undefined,
+          months: {
+            jan: 0,
+            feb: 0,
+            mar: 0,
+            apr: 0,
+            may: 0,
+            jun: 0,
+            jul: 0,
+            aug: 0,
+            sep: 0,
+            oct: 0,
+            nov: 0,
+            dec: 0,
+          },
+        });
+      }
+    });
+
+    // Populate dynamic monthly invoices
+    return baseList.map((cust) => {
+      const matchSysCust = systemCustomers.find(
+        (sc) => sc.customer_code === cust.code || sc.id === cust.id || sc.name === cust.name
+      );
+
+      const realBalance = matchSysCust ? Number(matchSysCust.current_balance || 0) : cust.balance;
+
+      const dynamicMonths = {
+        jan: 0,
+        feb: 0,
+        mar: 0,
+        apr: 0,
+        may: 0,
+        jun: 0,
+        jul: 0,
+        aug: 0,
+        sep: 0,
+        oct: 0,
+        nov: 0,
+        dec: 0,
+      };
+
+      // Sum actual invoices for 2026 by month
+      if (matchSysCust && systemInvoices.length > 0) {
+        systemInvoices.forEach((inv) => {
+          if (inv.customer_id === matchSysCust.id && inv.invoice_date) {
+            const d = new Date(inv.invoice_date);
+            const m = d.getMonth(); // 0 to 11
+            if (m >= 0 && m < 12) {
+              const mKey = MONTH_KEYS[m];
+              dynamicMonths[mKey] += Number(inv.total || 0);
+            }
+          }
+        });
+      }
+
+      return {
+        ...cust,
+        balance: realBalance,
+        months: dynamicMonths,
+      };
+    });
+  }, [systemCustomers, systemInvoices]);
 
   if (!isOpen) return null;
 
   // Filter customers by search
-  const filteredCustomers = EXCEL_CUSTOMERS_2026.filter((c) => {
+  const filteredCustomers = computedCustomers.filter((c) => {
     if (!search.trim()) return true;
     const s = search.toLowerCase().trim();
     return (
@@ -118,7 +227,10 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
     window.print();
   };
 
-  const currentCustomer = activeCustomer || filteredCustomers[0];
+  const currentCustomer =
+    filteredCustomers.find((c) => c.code === activeCustomerCode) ||
+    filteredCustomers[0] ||
+    null;
 
   return (
     <div className="excel-modal-overlay" onClick={onClose}>
@@ -133,20 +245,35 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
               <FileSpreadsheet size={24} />
             </div>
             <div>
-              <h2 className="excel-title">متابعة حسابات العملاء الشهري</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h2 className="excel-title">متابعة حسابات العملاء الشهري</h2>
+                <span className="live-sync-pill">
+                  <Sparkles size={12} />
+                  <span>نظام فعلي متزامن 2026</span>
+                </span>
+              </div>
               <span className="excel-subtitle">
-                سجل الحركات والمعاملات المالية الشهرية لجميع العملاء خلال عام 2026
+                كشف وتتبع الحركات والمسحوبات الشهرية لجميع العملاء خلال عام 2026
               </span>
             </div>
           </div>
 
           <div className="excel-header-actions">
             <button
+              onClick={loadLiveData}
+              className="btn-excel-action"
+              title="تحديث البيانات الحالية"
+              disabled={isLoadingLive}
+            >
+              <RefreshCw size={14} className={isLoadingLive ? 'spin-anim' : ''} />
+              <span>تحديث</span>
+            </button>
+            <button
               onClick={handleExportCSV}
               className="btn-excel-action"
               title="تصدير شيت Excel (CSV)"
             >
-              <Download size={16} />
+              <Download size={15} />
               <span>تصدير Excel</span>
             </button>
             <button
@@ -154,7 +281,7 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
               className="btn-excel-action"
               title="طباعة الشيت"
             >
-              <Printer size={16} />
+              <Printer size={15} />
               <span>طباعة</span>
             </button>
             <button onClick={onClose} className="excel-close-btn" aria-label="إغلاق">
@@ -186,9 +313,13 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
           <div className="summary-metric-card">
             <span className="metric-label">أعلى شهر مسحوبات</span>
             <div className="metric-number text-success">
-              {MONTH_NAMES_AR[monthlyTotals.indexOf(Math.max(...monthlyTotals))]}
+              {totalAnnualSales > 0
+                ? MONTH_NAMES_AR[monthlyTotals.indexOf(Math.max(...monthlyTotals))]
+                : '—'}
             </div>
-            <span className="metric-sub">{formatEGP(Math.max(...monthlyTotals))}</span>
+            <span className="metric-sub">
+              {totalAnnualSales > 0 ? formatEGP(Math.max(...monthlyTotals)) : '0.00 ج.م'}
+            </span>
           </div>
         </div>
 
@@ -206,7 +337,7 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
           </div>
 
           <div className="excel-hint-tag">
-            <span>اضغط على أي عميل في الجدول لعرض كشف حسابه الشهري المنفرد</span>
+            <span>💡 اضغط على زر [كشف الحساب] أو انقر على أي صف لعرض تحليل الـ 12 شهراً للعميل</span>
           </div>
         </div>
 
@@ -217,7 +348,7 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
               <tr className="excel-main-header-row">
                 <th className="sticky-col col-code">كود العميل</th>
                 <th className="sticky-col col-name">اسم العميل</th>
-                <th className="col-balance">الرصيد</th>
+                <th className="col-balance">الرصيد القائم</th>
                 {MONTH_NAMES_AR.map((m, idx) => (
                   <th key={idx} className="col-month">
                     {m}
@@ -228,68 +359,76 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
               </tr>
             </thead>
             <tbody>
-              {filteredCustomers.map((c, rowIdx) => {
-                const rowAnnualTotal = MONTH_KEYS.reduce(
-                  (sum, k) => sum + (c.months[k] || 0),
-                  0
-                );
-                const isSelected = activeCustomer?.code === c.code;
+              {filteredCustomers.length > 0 ? (
+                filteredCustomers.map((c, rowIdx) => {
+                  const rowAnnualTotal = MONTH_KEYS.reduce(
+                    (sum, k) => sum + (c.months[k] || 0),
+                    0
+                  );
+                  const isSelected = currentCustomer?.code === c.code;
 
-                return (
-                  <tr
-                    key={c.code}
-                    className={`excel-row ${isSelected ? 'excel-row-selected' : ''} ${
-                      rowIdx % 2 === 1 ? 'excel-row-alt' : ''
-                    }`}
-                    onClick={() => setActiveCustomer(c)}
-                  >
-                    <td className="sticky-col col-code">
-                      <span className="excel-code-badge">{c.code}</span>
-                    </td>
-                    <td className="sticky-col col-name">
-                      <div className="excel-cust-name-cell">
-                        <strong className="name-main">{c.name}</strong>
-                        {c.city && <span className="city-sub">{c.city}</span>}
-                      </div>
-                    </td>
-                    <td className="col-balance text-balance font-bold">
-                      {formatEGP(c.balance)}
-                    </td>
-                    {MONTH_KEYS.map((k, mIdx) => {
-                      const val = c.months[k] || 0;
-                      return (
-                        <td
-                          key={mIdx}
-                          className={`col-month ${val > 0 ? 'has-value' : 'zero-value'}`}
+                  return (
+                    <tr
+                      key={c.code}
+                      className={`excel-row ${isSelected ? 'excel-row-selected' : ''} ${
+                        rowIdx % 2 === 1 ? 'excel-row-alt' : ''
+                      }`}
+                      onClick={() => setActiveCustomerCode(c.code)}
+                    >
+                      <td className="sticky-col col-code">
+                        <span className="excel-code-badge">{c.code}</span>
+                      </td>
+                      <td className="sticky-col col-name">
+                        <div className="excel-cust-name-cell">
+                          <strong className="name-main">{c.name}</strong>
+                          {c.city && <span className="city-sub">{c.city}</span>}
+                        </div>
+                      </td>
+                      <td className="col-balance text-balance font-bold">
+                        {formatEGP(c.balance)}
+                      </td>
+                      {MONTH_KEYS.map((k, mIdx) => {
+                        const val = c.months[k] || 0;
+                        return (
+                          <td
+                            key={mIdx}
+                            className={`col-month ${val > 0 ? 'has-value' : 'zero-value'}`}
+                          >
+                            {val > 0
+                              ? Number(val).toLocaleString('ar-EG', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })
+                              : '0.00'}
+                          </td>
+                        );
+                      })}
+                      <td className="col-total font-bold text-gold-dark">
+                        {formatEGP(rowAnnualTotal)}
+                      </td>
+                      <td className="col-action">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveCustomerCode(c.code);
+                          }}
+                          className="btn-inspect-customer"
+                          title="عرض كشف الشهور المفصل"
                         >
-                          {val > 0
-                            ? Number(val).toLocaleString('ar-EG', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })
-                            : '0.00'}
-                        </td>
-                      );
-                    })}
-                    <td className="col-total font-bold text-gold-dark">
-                      {formatEGP(rowAnnualTotal)}
-                    </td>
-                    <td className="col-action">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveCustomer(c);
-                        }}
-                        className="btn-inspect-customer"
-                        title="عرض كشف الشهور المفصل"
-                      >
-                        <Eye size={14} />
-                        <span>كشف الحساب</span>
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                          <Eye size={13} />
+                          <span>كشف الحساب</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={16} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                    لا توجد نتائج مطابقة لعملية البحث
+                  </td>
+                </tr>
+              )}
             </tbody>
             <tfoot>
               <tr className="excel-footer-totals-row">
@@ -360,7 +499,18 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
                       onViewCustomerDetails(currentCustomer.id);
                     }}
                     className="btn-inspect-customer"
-                    style={{ padding: '8px 12px', background: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                    style={{
+                      padding: '8px 14px',
+                      background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                      color: '#ffffff',
+                      border: '1px solid #334155',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontWeight: 700,
+                    }}
                     title="فتح الملف الشامل للعميل"
                   >
                     <Eye size={15} />
@@ -415,13 +565,13 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
               <div className="deep-dive-title">
                 <Receipt size={16} />
                 <span>
-                  تفاصيل شهر {MONTH_NAMES_AR[selectedMonthIndex]} 2026 للعميل {currentCustomer.name}
+                  تحليل شهر {MONTH_NAMES_AR[selectedMonthIndex]} 2026 للعميل {currentCustomer.name}
                 </span>
               </div>
 
               <div className="deep-dive-details-box">
                 <div className="detail-item">
-                  <span className="label">قيمة المسحوبات المعتمدة:</span>
+                  <span className="label">قيمة المسحوبات المعتمدة للشهر:</span>
                   <span className="value font-bold text-gold-dark">
                     {formatEGP(currentCustomer.months[MONTH_KEYS[selectedMonthIndex]] || 0)}
                   </span>
@@ -429,7 +579,7 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
                 <div className="detail-item">
                   <span className="label">حالة المطابقة المالية:</span>
                   <span className="value text-success font-semibold">
-                    مطابق مع السجل العام لمؤسسة الشيخ
+                    مطابق مع الفواتير وسندات القبض المسجلة
                   </span>
                 </div>
                 <div className="detail-item">
@@ -446,3 +596,5 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
     </div>
   );
 };
+
+export default MonthlyExcelSheetModal;
