@@ -716,14 +716,14 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
           onClick={() => setActiveTab('notes')}
         >
           <StickyNote size={16} />
-          <span>ملاحظات متابعة {notes.length > 0 ? `(${notes.length})` : ''}</span>
+          <span>خدمة العملاء{notes.length > 0 ? `(${notes.length})` : ''}</span>
         </button>
         <button
           className={`tab-link ${activeTab === 'customer_service' ? 'tab-link-active' : ''}`}
           onClick={() => setActiveTab('customer_service')}
         >
           <Bell size={16} />
-          <span>خدمة العملاء {csNotes.length > 0 ? `(${csNotes.length})` : ''}</span>
+          <span>ملاحظات المندوب{csNotes.length > 0 ? `(${csNotes.length})` : ''}</span>
         </button>
         <button
           className={`tab-link ${activeTab === 'overview' ? 'tab-link-active' : ''}`}
@@ -1213,13 +1213,13 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                   />
                 </div>
                 <div className="note-form-field">
-                  <label className="note-field-label">نوع العميل</label>
+                  <label className="note-field-label">طريقة السداد</label>
                   <select
                     className="sheikh-select"
                     value={newNotePaymentMethod}
                     onChange={(e) => setNewNotePaymentMethod(e.target.value)}
                   >
-                    <option value="">— اختر نوع العميل —</option>
+                    <option value="">— اختر طريقة السداد —</option>
                     <option value="آجل">آجل (مديونية)</option>
                     <option value="نقدي">نقدي</option>
                     <option value="إنستاباي">إنستاباي</option>
@@ -1318,7 +1318,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
             <form onSubmit={handleAddCsNote} className="note-add-form">
               <div className="note-form-fields-row">
                 <div className="note-form-field">
-                  <label className="note-field-label">اسم موظف خدمة العملاء</label>
+                  <label className="note-field-label">اسم المندوب</label>
                   <input
                     type="text"
                     className="sheikh-input"
@@ -1349,7 +1349,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
               </div>
               <textarea
                 className="sheikh-textarea note-textarea"
-                placeholder="اكتب ملاحظة خدمة العملاء هنا... (مثال: العميل تواصل للاستفسار عن موعد التسليم)"
+                placeholder="اكتب ملاحظة المندوب هنا... (مثال: العميل تواصل للاستفسار عن موعد التسليم)"
                 value={csNoteText}
                 onChange={(e) => setCsNoteText(e.target.value)}
                 rows={3}
