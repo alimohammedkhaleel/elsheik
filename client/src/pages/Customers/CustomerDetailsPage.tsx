@@ -354,7 +354,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
     // Build rich summary: date + payment method + text
     const parts: string[] = [];
     if (newNoteDate) parts.push(`[تاريخ السداد: ${newNoteDate}]`);
-    if (newNotePaymentMethod) parts.push(`[طريقة الدفع: ${newNotePaymentMethod}]`);
+    if (newNotePaymentMethod) parts.push(`[نوع العميل: ${newNotePaymentMethod}]`);
     parts.push(newNoteText.trim());
     const richSummary = parts.join(' — ');
     try {
@@ -1213,19 +1213,19 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                   />
                 </div>
                 <div className="note-form-field">
-                  <label className="note-field-label">طريقة التسديد</label>
+                  <label className="note-field-label">نوع العميل</label>
                   <select
                     className="sheikh-select"
                     value={newNotePaymentMethod}
                     onChange={(e) => setNewNotePaymentMethod(e.target.value)}
                   >
-                    <option value="">— اختر طريقة الدفع —</option>
+                    <option value="">— اختر نوع العميل —</option>
+                    <option value="آجل">آجل (مديونية)</option>
                     <option value="نقدي">نقدي</option>
                     <option value="إنستاباي">إنستاباي</option>
                     <option value="فودافون كاش">فودافون كاش</option>
                     <option value="تحويل بنكي">تحويل بنكي</option>
                     <option value="شيك">شيك</option>
-                    <option value="آجل">آجل</option>
                   </select>
                 </div>
               </div>
@@ -1271,7 +1271,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                         if (part.startsWith('[تاريخ السداد:')) {
                           return <span key={i} className="note-tag note-tag-date"><Calendar size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
                         }
-                        if (part.startsWith('[طريقة الدفع:')) {
+                        if (part.startsWith('[نوع العميل:') || part.startsWith('[طريقة الدفع:')) {
                           return <span key={i} className="note-tag note-tag-method"><CreditCard size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
                         }
                         return <div key={i} className="note-content">{part}</div>;

@@ -54,6 +54,9 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({ onNavigate }) => {
   const [newInvNumber, setNewInvNumber] = useState('');
   const [newInvDiscount, setNewInvDiscount] = useState(0);
   const [newInvNotes, setNewInvNotes] = useState('');
+  // Actual payment method (separate from CREDIT/CASH type)
+  const [newInvPaymentMethod, setNewInvPaymentMethod] = useState<string>('CASH');
+  const [newInvPaymentRef, setNewInvPaymentRef] = useState<string>('');
 
   // Items State
   const [items, setItems] = useState<ItemRow[]>([]);
@@ -209,6 +212,8 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({ onNavigate }) => {
       setNewInvDiscount(0);
       setNewInvNotes('');
       setNewInvNumber('');
+      setNewInvPaymentMethod('CASH');
+      setNewInvPaymentRef('');
       fetchInvoices();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'فشل إنشاء الفاتورة';
@@ -511,7 +516,7 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({ onNavigate }) => {
 
               <div className="form-row-3">
                 <div className="form-group">
-                  <label className="form-label">طريقة السداد</label>
+                  <label className="form-label">نوع العميل (آجل / نقدي)</label>
                   <select
                     className="sheikh-select"
                     value={newInvType}
@@ -544,6 +549,47 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({ onNavigate }) => {
                     onChange={(e) => setNewInvNumber(e.target.value)}
                   />
                 </div>
+              </div>
+
+              {/* Payment Method Row */}
+              <div className="form-row-2">
+                <div className="form-group">
+                  <label className="form-label">طريقة السداد الفعلية</label>
+                  <select
+                    className="sheikh-select"
+                    value={newInvPaymentMethod}
+                    onChange={(e) => { setNewInvPaymentMethod(e.target.value); setNewInvPaymentRef(''); }}
+                  >
+                    <option value="CASH">نقدي</option>
+                    <option value="INSTAPAY">إنستاباي</option>
+                    <option value="VODAFONE_CASH">فودافون كاش</option>
+                    <option value="WALLET">محفظة إلكترونية</option>
+                    <option value="BANK_TRANSFER">تحويل بنكي</option>
+                    <option value="NSP">شبكة NSP</option>
+                    <option value="OTHER">أخرى</option>
+                  </select>
+                </div>
+
+                {/* Show reference input for non-cash methods */}
+                {['INSTAPAY','VODAFONE_CASH','WALLET','OTHER'].includes(newInvPaymentMethod) && (
+                  <div className="form-group">
+                    <label className="form-label">رقم المرجع / التحويل
+                      <span style={{ fontWeight: 400, color: '#6b7280', fontSize: '0.78rem', marginRight: '4px' }}>
+                        ({newInvPaymentMethod === 'INSTAPAY' ? 'رقم العملية / المحفظة' :
+                          newInvPaymentMethod === 'VODAFONE_CASH' ? 'رقم المحفظة' :
+                          newInvPaymentMethod === 'WALLET' ? 'رقم المحفظة' : 'تفاصيل إضافية'})
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      className="sheikh-input"
+                      placeholder={newInvPaymentMethod === 'INSTAPAY' ? '01xxxxxxxxx@instapay' :
+                        newInvPaymentMethod === 'VODAFONE_CASH' ? '01xxxxxxxxx' : 'رقم التحويل'}
+                      value={newInvPaymentRef}
+                      onChange={(e) => setNewInvPaymentRef(e.target.value)}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Items Section */}
