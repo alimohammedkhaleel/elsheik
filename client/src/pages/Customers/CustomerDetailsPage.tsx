@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   StickyNote,
   X,
+  Download,
 } from 'lucide-react';
 import { customerService } from '../../services/api/customerService';
 import { statementService } from '../../services/api/statementService';
@@ -279,7 +280,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
     if (isOverdue && customer) {
       showToast(
         'warn',
-        `⚠️ ${customer.name} لم يسدد المديونية منذ ${daysOverdue} يوم إضافياً عن موعد الاستحقاق`
+        `تنبيه: العميل ${customer.name} لم يسدد المديونية منذ ${daysOverdue} يوم إضافياً عن موعد الاستحقاق`
       );
     }
   }, [isOverdue]);
@@ -325,7 +326,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
       setNewFollowUpDate('');
       setIsInteractionModalOpen(false);
       fetchInteractions();
-      showToast('success', 'تم تسجيل التفاعل / الزيارة بنجاح');
+      showToast('success', 'تم تسجيل التفاعل بنجاح');
     } catch (err) {
       showToast('error', 'فشل تسجيل التفاعل');
     } finally {
@@ -384,6 +385,32 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
     }
   };
 
+  const handleExportStatementCSV = () => {
+    if (!statementData || statementData.transactions.length === 0) {
+      showToast('warn', 'لا توجد حركات لتصديرها في الفترة المحددة');
+      return;
+    }
+    const headers = ['#', 'التاريخ', 'نوع الحركة', 'البيان والتفاصيل', 'مدين (+)', 'دائن (-)', 'الرصيد المتراكم'];
+    const rows = statementData.transactions.map((tx, idx) => [
+      idx + 1,
+      `"${tx.transaction_date}"`,
+      `"${tx.transaction_type}"`,
+      `"${tx.description.replace(/"/g, '""')}"`,
+      tx.debit || 0,
+      tx.credit || 0,
+      tx.running_balance || 0
+    ]);
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `كشف_حساب_${customer?.name || 'عميل'}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const formatCurrency = (val: number) => {
     return Number(val || 0).toLocaleString('ar-EG', {
       minimumFractionDigits: 2,
@@ -391,11 +418,17 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
     }) + ' ج.م';
   };
 
-  const formatDate = (d: string) => {
+  const formatDate = (d?: string | null) => {
+    if (!d) return '—';
     try {
-      return new Date(d).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+      const dt = new Date(d);
+      if (isNaN(dt.getTime())) return String(d).split('T')[0];
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, '0');
+      const day = String(dt.getDate()).padStart(2, '0');
+      return `${y}/${m}/${day}`;
     } catch {
-      return d;
+      return String(d) || '—';
     }
   };
 
@@ -449,7 +482,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
           <div className="overdue-alert-banner">
             <AlertTriangle size={16} />
             <span>
-              ⚠️ تجاوز موعد السداد — المديونية:{' '}
+              تجاوز موعد السداد — المديونية:{' '}
               <strong>{formatCurrency(customer.current_balance || 0)}</strong> — متأخر{' '}
               <strong>{daysOverdue} يوم</strong> عن تاريخ الاستحقاق
             </span>
@@ -744,6 +777,15 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                   <Filter size={14} />
                   <span>تطبيق</span>
                 </button>
+                <button
+                  onClick={handleExportStatementCSV}
+                  className="btn-secondary align-self-end"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '0.8rem' }}
+                  title="تصدير كشف الحساب الحالي لملف Excel"
+                >
+                  <Download size={14} />
+                  <span>تصدير كشف الحساب Excel</span>
+                </button>
               </div>
             </div>
           </div>
@@ -800,7 +842,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                     {statementData.transactions.map((tx, idx) => (
                       <tr key={tx.id}>
                         <td>{idx + 1}</td>
-                        <td>{tx.transaction_date}</td>
+                        <td>{formatDate(tx.transaction_date)}</td>
                         <td>
                           <span className={`tx-type-pill tx-${tx.transaction_type}`}>
                             {tx.transaction_type === 'INVOICE'
@@ -881,9 +923,9 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                           <td>
                             <span className="code-pill">{inv.invoice_number}</span>
                           </td>
-                          <td>{inv.invoice_date}</td>
+                          <td>{formatDate(inv.invoice_date)}</td>
                           <td className={isInvOverdue ? 'text-danger font-bold' : ''}>
-                            {inv.due_date || '—'}
+                            {inv.due_date ? formatDate(inv.due_date) : '—'}
                           </td>
                           <td>
                             <span className={`payment-type-badge ${inv.payment_type === 'CREDIT' ? 'badge-credit' : 'badge-cash'}`}>
@@ -900,7 +942,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                                 : inv.payment_status === 'PARTIALLY_PAID'
                                 ? 'مدفوعة جزئياً'
                                 : inv.payment_status === 'OVERDUE'
-                                ? '⚠️ متأخرة'
+                                ? 'متأخرة عن السداد'
                                 : 'غير مدفوعة'}
                             </span>
                           </td>
@@ -955,12 +997,16 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                         <td>
                           <span className="code-pill">{p.receipt_number}</span>
                         </td>
-                        <td>{p.payment_date}</td>
+                        <td>{formatDate(p.payment_date)}</td>
                         <td className="font-bold text-success">{formatCurrency(p.amount)}</td>
                         <td>
                           <span className="method-pill">
                             {p.payment_method === 'CASH'
                               ? 'نقدي'
+                              : p.payment_method === 'INSTAPAY'
+                              ? 'إنستاباي'
+                              : p.payment_method === 'VODAFONE_CASH'
+                              ? 'فودافون كاش'
                               : p.payment_method === 'WALLET'
                               ? 'محفظة إلكترونية'
                               : p.payment_method === 'NSP'
@@ -1024,12 +1070,12 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                         <td>
                           <span className={`method-pill`}>
                             {it.interaction_type === 'VISIT'
-                              ? '🚗 زيارة ميدانية'
+                              ? 'زيارة ميدانية'
                               : it.interaction_type === 'CALL'
-                              ? '📞 مكالمة هاتفية'
+                              ? 'مكالمة هاتفية'
                               : it.interaction_type === 'FOLLOW_UP'
-                              ? '🔔 متابعة تحصيل'
-                              : '📋 ملاحظة'}
+                              ? 'متابعة تحصيل'
+                              : 'ملاحظة'}
                           </span>
                         </td>
                         <td className="font-semibold">{it.employee_name || 'موظف النظام'}</td>
@@ -1077,7 +1123,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                 disabled={isDeletingAll}
               >
                 <Trash size={14} />
-                <span>{confirmDeleteAll ? '⚠️ تأكيد حذف الكل' : 'حذف جميع الملاحظات'}</span>
+                <span>{confirmDeleteAll ? 'تأكيد حذف الكل' : 'حذف جميع الملاحظات'}</span>
               </button>
             )}
           </div>
@@ -1313,10 +1359,10 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                   onChange={(e: any) => setNewInteractionType(e.target.value)}
                   className="sheikh-select"
                 >
-                  <option value="VISIT">🚗 زيارة ميدانية</option>
-                  <option value="CALL">📞 مكالمة هاتفية</option>
-                  <option value="FOLLOW_UP">🔔 متابعة تحصيل</option>
-                  <option value="NOTE">📋 ملاحظة إدارية</option>
+                  <option value="VISIT">زيارة ميدانية</option>
+                  <option value="CALL">مكالمة هاتفية</option>
+                  <option value="FOLLOW_UP">متابعة تحصيل</option>
+                  <option value="NOTE">ملاحظة إدارية</option>
                 </select>
               </div>
 

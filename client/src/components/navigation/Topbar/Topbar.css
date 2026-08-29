@@ -306,16 +306,22 @@
   background-color: #FEF2F2 !important;
 }
 
-/* Mobile responsive */
-@media (max-width: 768px) {
+/* Mobile/Tablet responsive — must match sidebar breakpoint at 1024px */
+@media (max-width: 1024px) {
   .sheikh-topbar {
     height: 56px;
-    padding: 0 12px;
+    padding: 0 16px;
   }
 
   .topbar-menu-btn {
     display: flex;
     flex-shrink: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .sheikh-topbar {
+    padding: 0 12px;
   }
 
   .user-info-text {

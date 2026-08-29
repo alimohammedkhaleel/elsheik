@@ -1,4 +1,4 @@
-export type PaymentMethod = 'CASH' | 'WALLET' | 'NSP' | 'BANK_TRANSFER' | 'OTHER';
+export type PaymentMethod = 'CASH' | 'WALLET' | 'NSP' | 'BANK_TRANSFER' | 'INSTAPAY' | 'VODAFONE_CASH' | 'OTHER';
 
 export interface Payment {
   id: number;

@@ -19,7 +19,7 @@ export interface CreatePaymentPayload {
   invoice_id?: number;
   payment_date?: string;
   amount: number;
-  payment_method?: 'CASH' | 'WALLET' | 'NSP' | 'BANK_TRANSFER' | 'OTHER';
+  payment_method?: 'CASH' | 'WALLET' | 'NSP' | 'BANK_TRANSFER' | 'INSTAPAY' | 'VODAFONE_CASH' | 'OTHER';
   collected_by?: number;
   notes?: string;
 }

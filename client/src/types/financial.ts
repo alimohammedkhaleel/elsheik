@@ -2,7 +2,7 @@ export type PaymentType = 'CASH' | 'CREDIT';
 export type CustomerClassification = 'A' | 'B' | 'C';
 export type CustomerStatus = 'ACTIVE' | 'INACTIVE';
 export type InvoicePaymentStatus = 'PAID' | 'PARTIALLY_PAID' | 'UNPAID' | 'OVERDUE';
-export type PaymentMethod = 'CASH' | 'WALLET' | 'NSP' | 'BANK_TRANSFER' | 'OTHER';
+export type PaymentMethod = 'CASH' | 'WALLET' | 'NSP' | 'BANK_TRANSFER' | 'INSTAPAY' | 'VODAFONE_CASH' | 'OTHER';
 export type AssignmentType = 'SALES_REP' | 'ACCOUNTANT' | 'FOLLOW_UP';
 export type InteractionType = 'VISIT' | 'CALL' | 'NOTE' | 'FOLLOW_UP';
 

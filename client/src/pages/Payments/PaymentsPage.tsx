@@ -312,9 +312,11 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
           >
             <option value="">كافة طرق الدفع</option>
             <option value="CASH">نقدي (CASH)</option>
+            <option value="INSTAPAY">إنستاباي (InstaPay)</option>
+            <option value="VODAFONE_CASH">فودافون كاش (Vodafone Cash)</option>
             <option value="WALLET">محفظة إلكترونية</option>
-            <option value="NSP">شبكة NSP</option>
             <option value="BANK_TRANSFER">تحويل بنكي</option>
+            <option value="NSP">شبكة NSP</option>
             <option value="OTHER">أخرى</option>
           </select>
 
@@ -380,6 +382,10 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
                       <span className="method-pill">
                         {p.payment_method === 'CASH'
                           ? 'نقدي'
+                          : p.payment_method === 'INSTAPAY'
+                          ? 'إنستاباي'
+                          : p.payment_method === 'VODAFONE_CASH'
+                          ? 'فودافون كاش'
                           : p.payment_method === 'WALLET'
                           ? 'محفظة'
                           : p.payment_method === 'NSP'
@@ -528,9 +534,11 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
                     onChange={(e) => setNewMethod(e.target.value as PaymentMethod)}
                   >
                     <option value="CASH">نقدي (CASH)</option>
-                    <option value="WALLET">محفظة إلكترونية (فودافون كاش / إلخ)</option>
-                    <option value="NSP">شبكة NSP / بطاقة</option>
+                    <option value="INSTAPAY">إنستاباي (InstaPay)</option>
+                    <option value="VODAFONE_CASH">فودافون كاش (Vodafone Cash)</option>
+                    <option value="WALLET">محفظة إلكترونية أخرى</option>
                     <option value="BANK_TRANSFER">تحويل بنكي</option>
+                    <option value="NSP">شبكة NSP / بطاقة</option>
                     <option value="OTHER">أخرى</option>
                   </select>
                 </div>
@@ -634,9 +642,11 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
                     onChange={(e) => setEditMethod(e.target.value as PaymentMethod)}
                   >
                     <option value="CASH">نقدي (CASH)</option>
-                    <option value="WALLET">محفظة إلكترونية</option>
-                    <option value="NSP">شبكة NSP</option>
+                    <option value="INSTAPAY">إنستاباي (InstaPay)</option>
+                    <option value="VODAFONE_CASH">فودافون كاش (Vodafone Cash)</option>
+                    <option value="WALLET">محفظة إلكترونية أخرى</option>
                     <option value="BANK_TRANSFER">تحويل بنكي</option>
+                    <option value="NSP">شبكة NSP</option>
                     <option value="OTHER">أخرى</option>
                   </select>
                 </div>

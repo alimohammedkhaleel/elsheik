@@ -12,12 +12,15 @@ import {
   Trash2,
   Edit2,
   AlertTriangle,
+  FileSpreadsheet,
+  Download,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { customerService, CustomerFilters } from '../../services/api/customerService';
 import { userService } from '../../services/api/userService';
 import { productService, Product } from '../../services/api/productService';
 import { invoiceService } from '../../services/api/invoiceService';
+import { MonthlyExcelSheetModal } from '../../components/customers/MonthlyExcelSheetModal';
 import { Customer, CustomerClassification, PaymentType } from '../../types/financial';
 import { User } from '../../types/auth';
 import './CustomersPage.css';
@@ -52,6 +55,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
   const [sortBy, setSortBy] = useState<'balance' | 'latest' | 'name'>('latest');
 
   // Modals
+  const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [targetCustomer, setTargetCustomer] = useState<Customer | null>(null);
@@ -381,18 +385,79 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
     }) + ' ج.م';
   };
 
+  const handleExportCustomersCSV = () => {
+    const headers = [
+      'كود العميل',
+      'اسم العميل',
+      'الاسم التجاري',
+      'الهاتف',
+      'المدينة',
+      'العنوان',
+      'طبيعة التعامل',
+      'فترة السداد (أيام)',
+      'التصنيف',
+      'الحد الائتماني',
+      'الرصيد القائم',
+      'المندوب المسؤول'
+    ];
+
+    const rows = customers.map((c) => [
+      `"${c.customer_code}"`,
+      `"${c.name.replace(/"/g, '""')}"`,
+      `"${(c.trade_name || '').replace(/"/g, '""')}"`,
+      `"${c.phone || ''}"`,
+      `"${c.city || ''}"`,
+      `"${c.address || ''}"`,
+      `"${c.payment_type === 'CREDIT' ? 'آجل' : 'نقدي'}"`,
+      c.payment_terms_days || 0,
+      `"فئة ${c.classification}"`,
+      (c.credit_limit || 0).toFixed(2),
+      (c.current_balance || 0).toFixed(2),
+      `"${c.assigned_employee_name || ''}"`
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `قائمة_العملاء_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="customers-page-container">
-      {/* Header with Title and Create Action */}
+      {/* Header with Title and Actions */}
       <div className="page-header-row">
         <div>
           <h1 className="page-main-title">سجل العملاء ومناطق التوزيع</h1>
           <p className="page-sub-title">إدارة بيانات العملاء، شروط السداد، ومتابعة الأرصدة والمسؤوليات</p>
         </div>
-        <button onClick={() => { setIsCreateModalOpen(true); fetchProducts(); }} className="btn-gold">
-          <Plus size={16} />
-          <span>إضافة عميل جديد</span>
-        </button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setIsExcelModalOpen(true)}
+            className="btn-gold"
+            style={{ backgroundColor: '#059669', borderColor: '#10b981', color: '#ffffff' }}
+          >
+            <FileSpreadsheet size={16} />
+            <span>كشف مسحوبات الشهور 2026 (شيت الحسابات)</span>
+          </button>
+          <button
+            onClick={handleExportCustomersCSV}
+            className="btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            title="تصدير قائمة العملاء الحالية لملف Excel"
+          >
+            <Download size={16} />
+            <span>تصدير قائمة العملاء Excel</span>
+          </button>
+          <button onClick={() => { setIsCreateModalOpen(true); fetchProducts(); }} className="btn-gold">
+            <Plus size={16} />
+            <span>إضافة عميل جديد</span>
+          </button>
+        </div>
       </div>
 
       {/* Feedback Message */}
@@ -1233,6 +1298,13 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
           </div>
         </div>
       )}
+
+      {/* 2026 Monthly Accounting Excel Sheet Modal */}
+      <MonthlyExcelSheetModal
+        isOpen={isExcelModalOpen}
+        onClose={() => setIsExcelModalOpen(false)}
+        onViewCustomerDetails={(id) => onNavigate && onNavigate(`/customers/${id}`)}
+      />
     </div>
   );
 };
