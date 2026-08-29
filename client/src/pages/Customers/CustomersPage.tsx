@@ -546,34 +546,107 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
 
       {/* Overdue Summary Alert */}
       {(() => {
-        const overdueCount = customers.filter(
+        const overdueCustomers = customers.filter(
           (c) =>
             (c.current_balance || 0) > 0 &&
             c.last_order_date &&
             Math.floor((Date.now() - new Date(c.last_order_date).getTime()) / 86400000) >
               (c.payment_terms_days || 30)
-        ).length;
+        );
 
-        if (overdueCount === 0) return null;
+        if (overdueCustomers.length === 0) return null;
+
         return (
-          <div
-            style={{
+          <div style={{
+            backgroundColor: '#fef2f2',
+            border: '1px solid #fca5a5',
+            borderRadius: '10px',
+            overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
-              backgroundColor: '#fee2e2',
-              border: '1px solid #fca5a5',
               padding: '12px 18px',
-              borderRadius: '8px',
+              backgroundColor: '#fee2e2',
+              borderBottom: overdueCustomers.length > 0 ? '1px solid #fca5a5' : 'none',
               color: '#991b1b',
               fontSize: '0.88rem',
               fontWeight: 700,
-            }}
-          >
-            <AlertTriangle size={20} />
-            <span>
-              تنبيه رقابي: يوجد عدد <strong>{overdueCount}</strong> عميل تجاوزوا المهلة المحددة لسداد المستحقات والمديونيات!
-            </span>
+            }}>
+              <AlertTriangle size={20} />
+              <span>
+                تنبيه رقابي: يوجد <strong>{overdueCustomers.length}</strong> عميل تجاوزوا المهلة المحددة لسداد المستحقات والمديونيات!
+              </span>
+            </div>
+
+            {/* Overdue customers list */}
+            <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {overdueCustomers.map((c) => {
+                const daysSince = Math.floor((Date.now() - new Date(c.last_order_date!).getTime()) / 86400000);
+                const daysLate = Math.max(0, daysSince - (c.payment_terms_days || 30));
+                return (
+                  <div key={c.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: '#fff',
+                    border: '1px solid #fecaca',
+                    borderRadius: '7px',
+                    padding: '8px 14px',
+                    gap: '12px',
+                    flexWrap: 'wrap',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                      <span style={{
+                        background: '#dc2626',
+                        color: '#fff',
+                        borderRadius: '4px',
+                        padding: '2px 7px',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                      }}>
+                        {c.customer_code}
+                      </span>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#1a1a1a', fontSize: '0.87rem' }}>{c.name}</div>
+                        {c.trade_name && <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{c.trade_name}</div>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 700 }}>
+                        متأخر {daysLate} يوم
+                      </span>
+                      <span style={{ fontSize: '0.8rem', color: '#b45309', fontWeight: 700 }}>
+                        {formatCurrency(c.current_balance || 0)}
+                      </span>
+                      {onNavigate && (
+                        <button
+                          onClick={() => onNavigate(`/customers/${c.id}`)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '5px 12px',
+                            backgroundColor: '#dc2626',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Eye size={13} />
+                          فتح الملف
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         );
       })()}
