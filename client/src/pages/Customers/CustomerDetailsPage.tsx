@@ -61,7 +61,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   onNavigate,
 }) => {
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'statement' | 'invoices' | 'payments' | 'interactions' | 'notes'>('statement');
+  const [activeTab, setActiveTab] = useState<'overview' | 'statement' | 'invoices' | 'payments' | 'interactions' | 'notes' | 'customer_service'>('statement');
   const [isLoading, setIsLoading] = useState(true);
 
   // Statement Tab State
@@ -90,12 +90,22 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   const [newFollowUpDate, setNewFollowUpDate] = useState('');
   const [isAddingInteraction, setIsAddingInteraction] = useState(false);
 
-  // Inline Notes State (notes tab)
+  // Follow-up Notes State (notes tab) — with date + payment method
   const [newNoteText, setNewNoteText] = useState('');
+  const [newNoteDate, setNewNoteDate] = useState('');
+  const [newNotePaymentMethod, setNewNotePaymentMethod] = useState('');
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [isDeletingNote, setIsDeletingNote] = useState<number | null>(null);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+
+  // Customer Service Notes State
+  const [csAgentName, setCsAgentName] = useState('');
+  const [csAgentPhone, setCsAgentPhone] = useState('');
+  const [csNoteDate, setCsNoteDate] = useState('');
+  const [csNoteText, setCsNoteText] = useState('');
+  const [isAddingCsNote, setIsAddingCsNote] = useState(false);
+  const [isDeletingCsNote, setIsDeletingCsNote] = useState<number | null>(null);
 
   // Assignment Modal State
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -159,8 +169,12 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
     () => interactions.filter((i) => i.interaction_type === 'NOTE'),
     [interactions]
   );
+  const csNotes = useMemo(
+    () => interactions.filter((i) => i.interaction_type === 'CUSTOMER_SERVICE'),
+    [interactions]
+  );
   const nonNoteInteractions = useMemo(
-    () => interactions.filter((i) => i.interaction_type !== 'NOTE'),
+    () => interactions.filter((i) => i.interaction_type !== 'NOTE' && i.interaction_type !== 'CUSTOMER_SERVICE'),
     [interactions]
   );
 
@@ -272,7 +286,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
     if (activeTab === 'statement') fetchStatement();
     else if (activeTab === 'invoices') fetchInvoices();
     else if (activeTab === 'payments') fetchPayments();
-    else if (activeTab === 'interactions' || activeTab === 'notes') fetchInteractions();
+    else if (activeTab === 'interactions' || activeTab === 'notes' || activeTab === 'customer_service') fetchInteractions();
   }, [activeTab, customerId]);
 
   // Overdue notification on load
@@ -337,20 +351,70 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNoteText.trim()) return;
+    // Build rich summary: date + payment method + text
+    const parts: string[] = [];
+    if (newNoteDate) parts.push(`[تاريخ السداد: ${newNoteDate}]`);
+    if (newNotePaymentMethod) parts.push(`[طريقة الدفع: ${newNotePaymentMethod}]`);
+    parts.push(newNoteText.trim());
+    const richSummary = parts.join(' — ');
     try {
       setIsAddingNote(true);
       await interactionService.createInteraction({
         customer_id: customerId,
         interaction_type: 'NOTE',
-        summary: newNoteText.trim(),
+        summary: richSummary,
       });
       setNewNoteText('');
+      setNewNoteDate('');
+      setNewNotePaymentMethod('');
       fetchInteractions();
       showToast('success', 'تم إضافة الملاحظة');
     } catch {
       showToast('error', 'فشل إضافة الملاحظة');
     } finally {
       setIsAddingNote(false);
+    }
+  };
+
+  const handleAddCsNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!csNoteText.trim()) return;
+    const parts: string[] = [];
+    if (csAgentName) parts.push(`[اسم الموظف: ${csAgentName}]`);
+    if (csAgentPhone) parts.push(`[رقم الهاتف: ${csAgentPhone}]`);
+    if (csNoteDate) parts.push(`[التاريخ: ${csNoteDate}]`);
+    parts.push(csNoteText.trim());
+    const richSummary = parts.join(' — ');
+    try {
+      setIsAddingCsNote(true);
+      await interactionService.createInteraction({
+        customer_id: customerId,
+        interaction_type: 'CUSTOMER_SERVICE' as InteractionType,
+        summary: richSummary,
+      });
+      setCsAgentName('');
+      setCsAgentPhone('');
+      setCsNoteDate('');
+      setCsNoteText('');
+      fetchInteractions();
+      showToast('success', 'تم إضافة ملاحظة خدمة العملاء');
+    } catch {
+      showToast('error', 'فشل إضافة الملاحظة');
+    } finally {
+      setIsAddingCsNote(false);
+    }
+  };
+
+  const handleDeleteCsNote = async (interactionId: number) => {
+    try {
+      setIsDeletingCsNote(interactionId);
+      await interactionService.deleteInteraction(customerId, interactionId);
+      setInteractions((prev) => prev.filter((i) => i.id !== interactionId));
+      showToast('success', 'تم حذف الملاحظة');
+    } catch {
+      showToast('error', 'فشل حذف الملاحظة');
+    } finally {
+      setIsDeletingCsNote(null);
     }
   };
 
@@ -653,6 +717,13 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
         >
           <StickyNote size={16} />
           <span>ملاحظات متابعة {notes.length > 0 ? `(${notes.length})` : ''}</span>
+        </button>
+        <button
+          className={`tab-link ${activeTab === 'customer_service' ? 'tab-link-active' : ''}`}
+          onClick={() => setActiveTab('customer_service')}
+        >
+          <Bell size={16} />
+          <span>خدمة العملاء {csNotes.length > 0 ? `(${csNotes.length})` : ''}</span>
         </button>
         <button
           className={`tab-link ${activeTab === 'overview' ? 'tab-link-active' : ''}`}
@@ -1128,19 +1199,46 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
             )}
           </div>
 
-          {/* Add New Note inline */}
+          {/* Add New Note — with Date + Payment Method */}
           <div className="sheikh-card notes-add-card">
             <form onSubmit={handleAddNote} className="note-add-form">
+              <div className="note-form-fields-row">
+                <div className="note-form-field">
+                  <label className="note-field-label">تاريخ السداد</label>
+                  <input
+                    type="date"
+                    className="sheikh-input"
+                    value={newNoteDate}
+                    onChange={(e) => setNewNoteDate(e.target.value)}
+                  />
+                </div>
+                <div className="note-form-field">
+                  <label className="note-field-label">طريقة التسديد</label>
+                  <select
+                    className="sheikh-select"
+                    value={newNotePaymentMethod}
+                    onChange={(e) => setNewNotePaymentMethod(e.target.value)}
+                  >
+                    <option value="">— اختر طريقة الدفع —</option>
+                    <option value="نقدي">نقدي</option>
+                    <option value="إنستاباي">إنستاباي</option>
+                    <option value="فودافون كاش">فودافون كاش</option>
+                    <option value="تحويل بنكي">تحويل بنكي</option>
+                    <option value="شيك">شيك</option>
+                    <option value="آجل">آجل</option>
+                  </select>
+                </div>
+              </div>
               <textarea
                 className="sheikh-textarea note-textarea"
-                placeholder="اكتب ملاحظة عن العميل هنا... (مثال: العميل طلب خصم على الشحنة القادمة)"
+                placeholder="اكتب ملاحظة المتابعة هنا... (مثال: العميل وعد بالسداد في نهاية الأسبوع)"
                 value={newNoteText}
                 onChange={(e) => setNewNoteText(e.target.value)}
                 rows={3}
               />
               <button type="submit" className="btn-gold-small" disabled={isAddingNote || !newNoteText.trim()}>
                 <PlusCircle size={15} />
-                <span>{isAddingNote ? 'جاري الحفظ...' : '+ إضافة ملاحظة'}</span>
+                <span>{isAddingNote ? 'جاري الحفظ...' : '+ إضافة ملاحظة متابعة'}</span>
               </button>
             </form>
           </div>
@@ -1166,14 +1264,29 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                       {isDeletingNote === note.id ? '...' : <X size={14} />}
                     </button>
                   </div>
-                  <div className="note-content">{note.summary || note.notes}</div>
+                  {/* Parse rich metadata embedded in summary */}
+                  {(note.summary || note.notes || '').includes('[') ? (
+                    <div className="note-meta-tags">
+                      {(note.summary || note.notes || '').split(' — ').map((part, i) => {
+                        if (part.startsWith('[تاريخ السداد:')) {
+                          return <span key={i} className="note-tag note-tag-date"><Calendar size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
+                        }
+                        if (part.startsWith('[طريقة الدفع:')) {
+                          return <span key={i} className="note-tag note-tag-method"><CreditCard size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
+                        }
+                        return <div key={i} className="note-content">{part}</div>;
+                      })}
+                    </div>
+                  ) : (
+                    <div className="note-content">{note.summary || note.notes}</div>
+                  )}
                 </div>
               ))}
             </div>
           ) : (
             <div className="empty-state-box">
               <StickyNote size={36} className="empty-state-icon" />
-              <h4>لا توجد ملاحظات مسجلة لهذا العميل</h4>
+              <h4>لا توجد ملاحظات متابعة مسجلة لهذا العميل</h4>
               <p>استخدم الحقل أعلاه لإضافة ملاحظة جديدة</p>
             </div>
           )}
@@ -1185,6 +1298,115 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
               <button onClick={() => setConfirmDeleteAll(false)} className="btn-secondary" style={{ padding: '4px 12px' }}>
                 إلغاء
               </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 6: CUSTOMER SERVICE NOTES (خدمة العملاء) */}
+      {activeTab === 'customer_service' && (
+        <div className="tab-content-wrapper">
+          <div className="tab-header-actions-row">
+            <h3>
+              <Bell size={18} style={{ marginLeft: '6px', color: '#7c3aed' }} />
+              ملاحظات خدمة العملاء
+            </h3>
+          </div>
+
+          {/* Add Customer Service Note */}
+          <div className="sheikh-card notes-add-card">
+            <form onSubmit={handleAddCsNote} className="note-add-form">
+              <div className="note-form-fields-row">
+                <div className="note-form-field">
+                  <label className="note-field-label">اسم موظف خدمة العملاء</label>
+                  <input
+                    type="text"
+                    className="sheikh-input"
+                    placeholder="اسم الموظف المسؤول"
+                    value={csAgentName}
+                    onChange={(e) => setCsAgentName(e.target.value)}
+                  />
+                </div>
+                <div className="note-form-field">
+                  <label className="note-field-label">رقم الهاتف</label>
+                  <input
+                    type="text"
+                    className="sheikh-input"
+                    placeholder="01xxxxxxxxx"
+                    value={csAgentPhone}
+                    onChange={(e) => setCsAgentPhone(e.target.value)}
+                  />
+                </div>
+                <div className="note-form-field">
+                  <label className="note-field-label">التاريخ</label>
+                  <input
+                    type="date"
+                    className="sheikh-input"
+                    value={csNoteDate}
+                    onChange={(e) => setCsNoteDate(e.target.value)}
+                  />
+                </div>
+              </div>
+              <textarea
+                className="sheikh-textarea note-textarea"
+                placeholder="اكتب ملاحظة خدمة العملاء هنا... (مثال: العميل تواصل للاستفسار عن موعد التسليم)"
+                value={csNoteText}
+                onChange={(e) => setCsNoteText(e.target.value)}
+                rows={3}
+              />
+              <button type="submit" className="btn-gold-small" disabled={isAddingCsNote || !csNoteText.trim()}
+                style={{ backgroundColor: '#7c3aed', borderColor: '#7c3aed' }}
+              >
+                <PlusCircle size={15} />
+                <span>{isAddingCsNote ? 'جاري الحفظ...' : '+ إضافة ملاحظة خدمة العملاء'}</span>
+              </button>
+            </form>
+          </div>
+
+          {/* CS Notes List */}
+          {isInteractionsLoading ? (
+            <div className="table-loading-box">جاري تحميل الملاحظات...</div>
+          ) : csNotes.length > 0 ? (
+            <div className="notes-list-grid">
+              {csNotes.map((note) => (
+                <div key={note.id} className="note-card note-card-cs">
+                  <div className="note-card-header">
+                    <div className="note-meta">
+                      <span className="note-employee cs-note-label">خدمة العملاء</span>
+                      <span className="note-date">{formatDate(note.interaction_date)}</span>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteCsNote(note.id)}
+                      className="note-delete-btn"
+                      disabled={isDeletingCsNote === note.id}
+                      title="حذف هذه الملاحظة"
+                    >
+                      {isDeletingCsNote === note.id ? '...' : <X size={14} />}
+                    </button>
+                  </div>
+                  {/* Parse rich metadata */}
+                  <div className="note-meta-tags">
+                    {(note.summary || note.notes || '').split(' — ').map((part, i) => {
+                      if (part.startsWith('[اسم الموظف:')) {
+                        return <span key={i} className="note-tag note-tag-agent"><User size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
+                      }
+                      if (part.startsWith('[رقم الهاتف:')) {
+                        return <span key={i} className="note-tag note-tag-phone"><Phone size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
+                      }
+                      if (part.startsWith('[التاريخ:')) {
+                        return <span key={i} className="note-tag note-tag-date"><Calendar size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
+                      }
+                      return <div key={i} className="note-content">{part}</div>;
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state-box">
+              <Bell size={36} className="empty-state-icon" />
+              <h4>لا توجد ملاحظات خدمة عملاء مسجلة</h4>
+              <p>استخدم الحقل أعلاه لإضافة ملاحظة جديدة</p>
             </div>
           )}
         </div>
