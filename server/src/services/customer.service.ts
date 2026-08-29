@@ -139,6 +139,20 @@ export class CustomerService {
 
     return true;
   }
+
+  async resetAllBalances(): Promise<{ updated: number }> {
+    const result = await customerRepository.resetAllBalances();
+
+    await auditService.record({
+      user_id: 1,
+      action: 'CUSTOMER_UPDATED',
+      entity_type: 'CUSTOMER',
+      entity_id: 0,
+      new_values: { action: 'RESET_ALL_BALANCES', affected_rows: result.updated },
+    });
+
+    return result;
+  }
 }
 
 export const customerService = new CustomerService();

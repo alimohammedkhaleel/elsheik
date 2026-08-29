@@ -116,6 +116,15 @@ export class CustomerController {
       next(error);
     }
   };
+
+  resetAllBalances = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const result = await customerService.resetAllBalances();
+      ResponseUtil.success(res, 'تم تصفير أرصدة جميع العملاء بنجاح', result, 200);
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 export const customerController = new CustomerController();

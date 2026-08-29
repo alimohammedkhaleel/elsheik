@@ -957,6 +957,41 @@ export class CustomerRepository {
     memoryCustomers.splice(idx, 1);
     return true;
   }
+
+  async resetAllBalances(): Promise<{ updated: number }> {
+    const { isConfigured } = validateDatabaseEnv();
+    let updatedCount = 0;
+
+    if (isConfigured) {
+      try {
+        const res = await query(
+          `UPDATE customers 
+           SET current_balance = 0, 
+               total_sales = 0, 
+               total_paid = 0, 
+               invoice_count = 0, 
+               avg_invoice = 0,
+               overdue_amount = 0
+           WHERE deleted_at IS NULL;`
+        );
+        updatedCount = res.rowCount ?? 0;
+      } catch (err) {
+        console.error('Failed to reset DB balances:', err);
+      }
+    }
+
+    // Also update in-memory customers
+    memoryCustomers.forEach((c) => {
+      c.current_balance = 0;
+      c.total_sales = 0;
+      c.total_paid = 0;
+      c.invoice_count = 0;
+      c.avg_invoice = 0;
+      c.overdue_amount = 0;
+    });
+
+    return { updated: updatedCount || memoryCustomers.length };
+  }
 }
 
 export const customerRepository = new CustomerRepository();

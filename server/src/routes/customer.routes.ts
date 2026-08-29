@@ -19,6 +19,9 @@ router.delete('/:id', requireRole('ADMIN', 'MANAGER'), customerController.delete
 // Assignment action
 router.patch('/:id/assignment', requireRole('ADMIN', 'MANAGER'), customerController.assignEmployee);
 
+// Reset all customer balances (ADMIN only — one-time use)
+router.post('/reset-all-balances', requireRole('ADMIN'), customerController.resetAllBalances);
+
 // Customer Interactions (Visits, Calls, Notes, Follow-ups)
 router.get('/:id/interactions', interactionController.getByCustomer);
 router.post('/:id/interactions', requireRole('ADMIN', 'MANAGER', 'EMPLOYEE', 'COLLECTOR'), interactionController.create);

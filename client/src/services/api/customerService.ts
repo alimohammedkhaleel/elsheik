@@ -92,6 +92,14 @@ export class CustomerService {
     }
     return true;
   }
+
+  async resetAllBalances(): Promise<{ updated: number }> {
+    const response = await apiClient.post<{ updated: number }>('/customers/reset-all-balances');
+    if (!response.success || !response.data) {
+      throw new Error(response.message || 'فشل تصفير الأرصدة');
+    }
+    return response.data;
+  }
 }
 
 export const customerService = new CustomerService();

@@ -90,14 +90,22 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   const [newFollowUpDate, setNewFollowUpDate] = useState('');
   const [isAddingInteraction, setIsAddingInteraction] = useState(false);
 
-  // Follow-up Notes State (notes tab) — with date + payment method
+  // Follow-up Notes State (notes tab) — rep name + phone + date + payment method
   const [newNoteText, setNewNoteText] = useState('');
   const [newNoteDate, setNewNoteDate] = useState('');
   const [newNotePaymentMethod, setNewNotePaymentMethod] = useState('');
+  const [newNoteRepName, setNewNoteRepName] = useState('');
+  const [newNoteRepPhone, setNewNoteRepPhone] = useState('');
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [isDeletingNote, setIsDeletingNote] = useState<number | null>(null);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+
+  // Balance Reset State
+  const [isResettingBalance, setIsResettingBalance] = useState(false);
+  const [isResettingAllBalances, setIsResettingAllBalances] = useState(false);
+  const [confirmResetCustomer, setConfirmResetCustomer] = useState(false);
+  const [confirmResetAll, setConfirmResetAll] = useState(false);
 
   // Customer Service Notes State
   const [csAgentName, setCsAgentName] = useState('');
@@ -351,10 +359,12 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNoteText.trim()) return;
-    // Build rich summary: date + payment method + text
+    // Build rich summary: rep name + phone + date + payment method + text
     const parts: string[] = [];
+    if (newNoteRepName) parts.push(`[اسم المندوب: ${newNoteRepName}]`);
+    if (newNoteRepPhone) parts.push(`[رقم المندوب: ${newNoteRepPhone}]`);
     if (newNoteDate) parts.push(`[تاريخ السداد: ${newNoteDate}]`);
-    if (newNotePaymentMethod) parts.push(`[نوع العميل: ${newNotePaymentMethod}]`);
+    if (newNotePaymentMethod) parts.push(`[طريقة السداد: ${newNotePaymentMethod}]`);
     parts.push(newNoteText.trim());
     const richSummary = parts.join(' — ');
     try {
@@ -367,8 +377,10 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
       setNewNoteText('');
       setNewNoteDate('');
       setNewNotePaymentMethod('');
+      setNewNoteRepName('');
+      setNewNoteRepPhone('');
       fetchInteractions();
-      showToast('success', 'تم إضافة الملاحظة');
+      showToast('success', 'تم إضافة ملاحظة المندوب');
     } catch {
       showToast('error', 'فشل إضافة الملاحظة');
     } finally {
@@ -380,7 +392,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
     e.preventDefault();
     if (!csNoteText.trim()) return;
     const parts: string[] = [];
-    if (csAgentName) parts.push(`[اسم الموظف: ${csAgentName}]`);
+    if (csAgentName) parts.push(`[اسم موظف خدمة العملاء: ${csAgentName}]`);
     if (csAgentPhone) parts.push(`[رقم الهاتف: ${csAgentPhone}]`);
     if (csNoteDate) parts.push(`[التاريخ: ${csNoteDate}]`);
     parts.push(csNoteText.trim());
@@ -446,6 +458,43 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
       showToast('error', 'فشل حذف الملاحظات');
     } finally {
       setIsDeletingAll(false);
+    }
+  };
+
+  const handleResetCustomerBalance = async () => {
+    try {
+      setIsResettingBalance(true);
+      await customerService.updateCustomer(customerId, {
+        current_balance: 0,
+        total_sales: 0,
+        total_paid: 0,
+        invoice_count: 0,
+        avg_invoice: 0,
+        overdue_amount: 0,
+      });
+      await fetchCustomerDetails();
+      await fetchStatement();
+      setConfirmResetCustomer(false);
+      showToast('success', `تم تصفير رصيد العميل (${customer?.name}) بنجاح`);
+    } catch {
+      showToast('error', 'فشل تصفير رصيد العميل');
+    } finally {
+      setIsResettingBalance(false);
+    }
+  };
+
+  const handleResetAllBalances = async () => {
+    try {
+      setIsResettingAllBalances(true);
+      const res = await customerService.resetAllBalances();
+      await fetchCustomerDetails();
+      await fetchStatement();
+      setConfirmResetAll(false);
+      showToast('success', `تم تصفير أرصدة جميع العملاء بنجاح (${res.updated} عميل)`);
+    } catch {
+      showToast('error', 'فشل تصفير أرصدة العملاء');
+    } finally {
+      setIsResettingAllBalances(false);
     }
   };
 
@@ -716,14 +765,14 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
           onClick={() => setActiveTab('notes')}
         >
           <StickyNote size={16} />
-          <span>خدمة العملاء{notes.length > 0 ? `(${notes.length})` : ''}</span>
+          <span>ملاحظات المندوب{notes.length > 0 ? ` (${notes.length})` : ''}</span>
         </button>
         <button
           className={`tab-link ${activeTab === 'customer_service' ? 'tab-link-active' : ''}`}
           onClick={() => setActiveTab('customer_service')}
         >
           <Bell size={16} />
-          <span>ملاحظات المندوب{csNotes.length > 0 ? `(${csNotes.length})` : ''}</span>
+          <span>خدمة العملاء{csNotes.length > 0 ? ` (${csNotes.length})` : ''}</span>
         </button>
         <button
           className={`tab-link ${activeTab === 'overview' ? 'tab-link-active' : ''}`}
@@ -1179,13 +1228,13 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
         </div>
       )}
 
-      {/* TAB 5: NOTES (ملاحظات المتابعة) */}
+      {/* TAB 5: NOTES (ملاحظات المندوب) */}
       {activeTab === 'notes' && (
         <div className="tab-content-wrapper">
           <div className="tab-header-actions-row">
             <h3>
               <StickyNote size={18} style={{ marginLeft: '6px', color: '#d97706' }} />
-              ملاحظات متابعة العملاء
+              ملاحظات المندوب
             </h3>
             {notes.length > 0 && (
               <button
@@ -1199,10 +1248,30 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
             )}
           </div>
 
-          {/* Add New Note — with Date + Payment Method */}
+          {/* Add New Note — rep name + phone + date + payment method */}
           <div className="sheikh-card notes-add-card">
             <form onSubmit={handleAddNote} className="note-add-form">
               <div className="note-form-fields-row">
+                <div className="note-form-field">
+                  <label className="note-field-label">اسم المندوب</label>
+                  <input
+                    type="text"
+                    className="sheikh-input"
+                    placeholder="اسم المندوب"
+                    value={newNoteRepName}
+                    onChange={(e) => setNewNoteRepName(e.target.value)}
+                  />
+                </div>
+                <div className="note-form-field">
+                  <label className="note-field-label">رقم المندوب</label>
+                  <input
+                    type="text"
+                    className="sheikh-input"
+                    placeholder="01xxxxxxxxx"
+                    value={newNoteRepPhone}
+                    onChange={(e) => setNewNoteRepPhone(e.target.value)}
+                  />
+                </div>
                 <div className="note-form-field">
                   <label className="note-field-label">تاريخ السداد</label>
                   <input
@@ -1231,14 +1300,14 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
               </div>
               <textarea
                 className="sheikh-textarea note-textarea"
-                placeholder="اكتب ملاحظة المتابعة هنا... (مثال: العميل وعد بالسداد في نهاية الأسبوع)"
+                placeholder="اكتب ملاحظة المندوب هنا... (مثال: العميل وعد بالسداد في نهاية الأسبوع)"
                 value={newNoteText}
                 onChange={(e) => setNewNoteText(e.target.value)}
                 rows={3}
               />
               <button type="submit" className="btn-gold-small" disabled={isAddingNote || !newNoteText.trim()}>
                 <PlusCircle size={15} />
-                <span>{isAddingNote ? 'جاري الحفظ...' : '+ إضافة ملاحظة متابعة'}</span>
+                <span>{isAddingNote ? 'جاري الحفظ...' : '+ إضافة ملاحظة المندوب'}</span>
               </button>
             </form>
           </div>
@@ -1268,10 +1337,16 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                   {(note.summary || note.notes || '').includes('[') ? (
                     <div className="note-meta-tags">
                       {(note.summary || note.notes || '').split(' — ').map((part, i) => {
+                        if (part.startsWith('[اسم المندوب:')) {
+                          return <span key={i} className="note-tag note-tag-agent"><User size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
+                        }
+                        if (part.startsWith('[رقم المندوب:')) {
+                          return <span key={i} className="note-tag note-tag-phone"><Phone size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
+                        }
                         if (part.startsWith('[تاريخ السداد:')) {
                           return <span key={i} className="note-tag note-tag-date"><Calendar size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
                         }
-                        if (part.startsWith('[نوع العميل:') || part.startsWith('[طريقة الدفع:')) {
+                        if (part.startsWith('[طريقة السداد:') || part.startsWith('[نوع العميل:') || part.startsWith('[طريقة الدفع:')) {
                           return <span key={i} className="note-tag note-tag-method"><CreditCard size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
                         }
                         return <div key={i} className="note-content">{part}</div>;
@@ -1286,8 +1361,8 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
           ) : (
             <div className="empty-state-box">
               <StickyNote size={36} className="empty-state-icon" />
-              <h4>لا توجد ملاحظات متابعة مسجلة لهذا العميل</h4>
-              <p>استخدم الحقل أعلاه لإضافة ملاحظة جديدة</p>
+              <h4>لا توجد ملاحظات مندوب مسجلة لهذا العميل</h4>
+              <p>استخدم الحقل أعلاه لإضافة ملاحظة المندوب</p>
             </div>
           )}
 
@@ -1318,7 +1393,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
             <form onSubmit={handleAddCsNote} className="note-add-form">
               <div className="note-form-fields-row">
                 <div className="note-form-field">
-                  <label className="note-field-label">اسم المندوب</label>
+                  <label className="note-field-label">اسم موظف خدمة العملاء</label>
                   <input
                     type="text"
                     className="sheikh-input"
@@ -1349,7 +1424,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
               </div>
               <textarea
                 className="sheikh-textarea note-textarea"
-                placeholder="اكتب ملاحظة المندوب هنا... (مثال: العميل تواصل للاستفسار عن موعد التسليم)"
+                  placeholder="اكتب ملاحظة خدمة العملاء هنا... (مثال: العميل تواصل للاستفسار عن موعد التسليم)"
                 value={csNoteText}
                 onChange={(e) => setCsNoteText(e.target.value)}
                 rows={3}
@@ -1387,7 +1462,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                   {/* Parse rich metadata */}
                   <div className="note-meta-tags">
                     {(note.summary || note.notes || '').split(' — ').map((part, i) => {
-                      if (part.startsWith('[اسم الموظف:')) {
+                      if (part.startsWith('[اسم موظف خدمة العملاء:') || part.startsWith('[اسم الموظف:')) {
                         return <span key={i} className="note-tag note-tag-agent"><User size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
                       }
                       if (part.startsWith('[رقم الهاتف:')) {
@@ -1484,14 +1559,60 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
               </div>
             </div>
 
-            <div style={{ marginTop: '1.5rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem', display: 'flex', gap: '0.75rem' }}>
+            <div style={{ marginTop: '1.5rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
               <button
                 onClick={() => setIsAssignModalOpen(true)}
                 className="btn-gold"
               >
                 تعديل إسناد الموظفين (مندوب / محاسب / متابعة)
               </button>
+
+              <button
+                onClick={() => setConfirmResetCustomer(true)}
+                className="btn-secondary"
+                style={{ backgroundColor: '#fff7ed', color: '#c2410c', borderColor: '#fdba74' }}
+                disabled={isResettingBalance}
+              >
+                <Trash size={15} />
+                <span>{isResettingBalance ? 'جاري تصفير الرصيد...' : 'تصفير رصيد هذا العميل'}</span>
+              </button>
+
+              <button
+                onClick={() => setConfirmResetAll(true)}
+                className="btn-secondary"
+                style={{ backgroundColor: '#fef2f2', color: '#dc2626', borderColor: '#fca5a5' }}
+                disabled={isResettingAllBalances}
+              >
+                <AlertTriangle size={15} />
+                <span>{isResettingAllBalances ? 'جاري تصفير الكل...' : 'تصفير أرصدة جميع العملاء'}</span>
+              </button>
             </div>
+
+            {confirmResetCustomer && (
+              <div className="confirm-delete-banner mt-3" style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#fff7ed', padding: '12px', borderRadius: '8px', border: '1px solid #fed7aa', color: '#9a3412', marginTop: '1rem' }}>
+                <AlertTriangle size={20} />
+                <span style={{ flex: 1, fontSize: '0.9rem' }}>هل أنت متأكد من تصفير رصيد العميل <strong>{customer.name}</strong>؟ سيتم تعيين الرصيد الحالي والمبيعات إلى 0.</span>
+                <button onClick={handleResetCustomerBalance} className="btn-gold-small" style={{ backgroundColor: '#ea580c', borderColor: '#ea580c' }}>
+                  تأكيد التصفير
+                </button>
+                <button onClick={() => setConfirmResetCustomer(false)} className="btn-secondary" style={{ padding: '4px 12px' }}>
+                  إلغاء
+                </button>
+              </div>
+            )}
+
+            {confirmResetAll && (
+              <div className="confirm-delete-banner mt-3" style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#fef2f2', padding: '12px', borderRadius: '8px', border: '1px solid #fecaca', color: '#991b1b', marginTop: '1rem' }}>
+                <AlertTriangle size={20} />
+                <span style={{ flex: 1, fontSize: '0.9rem' }}>⚠️ تحذير: هل أنت متأكد من تصفير أرصدة <strong>جميع العملاء</strong> في النظام بالكامل؟ هذا الإجراء لا يمكن التراجع عنه.</span>
+                <button onClick={handleResetAllBalances} className="btn-gold-small" style={{ backgroundColor: '#dc2626', borderColor: '#dc2626' }}>
+                  نعم، تصفير رصيد كل العملاء
+                </button>
+                <button onClick={() => setConfirmResetAll(false)} className="btn-secondary" style={{ padding: '4px 12px' }}>
+                  إلغاء
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
