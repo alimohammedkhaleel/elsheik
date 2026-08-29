@@ -45,6 +45,18 @@ export class InteractionService {
 
     return item;
   }
+
+  async deleteInteraction(interactionId: number, customerId: number): Promise<void> {
+    const deleted = await interactionRepository.deleteOne(interactionId, customerId);
+    if (!deleted) {
+      throw new AppError('الملاحظة غير موجودة أو لا تنتمي لهذا العميل', 404, 'NOT_FOUND');
+    }
+  }
+
+  async deleteAllByCustomer(customerId: number): Promise<{ count: number }> {
+    const count = await interactionRepository.deleteAllByCustomer(customerId);
+    return { count };
+  }
 }
 
 export const interactionService = new InteractionService();

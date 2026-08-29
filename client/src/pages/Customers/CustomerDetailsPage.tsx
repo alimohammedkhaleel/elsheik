@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Building,
   ArrowRight,
@@ -13,6 +13,14 @@ import {
   Filter,
   AlertCircle,
   FileSpreadsheet,
+  MessageSquare,
+  Trash,
+  Bell,
+  Calendar,
+  CheckCircle2,
+  AlertTriangle,
+  StickyNote,
+  X,
 } from 'lucide-react';
 import { customerService } from '../../services/api/customerService';
 import { statementService } from '../../services/api/statementService';
@@ -30,13 +38,17 @@ import {
   AssignmentType,
 } from '../../types/financial';
 import { User as SystemUser } from '../../types/auth';
-import { EXCEL_CUSTOMERS_2026, MONTH_KEYS } from '../../constants/monthlyData';
 import './CustomerDetailsPage.css';
 
 interface CustomerDetailsPageProps {
   customerId: number;
   onNavigate?: (path: string) => void;
 }
+
+const MONTH_KEYS = [
+  'jan', 'feb', 'mar', 'apr', 'may', 'jun',
+  'jul', 'aug', 'sep', 'oct', 'nov', 'dec'
+];
 
 const ARABIC_MONTHS = [
   'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
@@ -48,7 +60,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   onNavigate,
 }) => {
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'statement' | 'invoices' | 'payments' | 'interactions'>('statement');
+  const [activeTab, setActiveTab] = useState<'overview' | 'statement' | 'invoices' | 'payments' | 'interactions' | 'notes'>('statement');
   const [isLoading, setIsLoading] = useState(true);
 
   // Statement Tab State
@@ -62,19 +74,27 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   // Invoices Tab State
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isInvoicesLoading, setIsInvoicesLoading] = useState(false);
+  const [expandedMonthIdx, setExpandedMonthIdx] = useState<number | null>(null);
 
   // Payments Tab State
   const [payments, setPayments] = useState<Payment[]>([]);
   const [isPaymentsLoading, setIsPaymentsLoading] = useState(false);
 
-  // Interactions Tab State
+  // Interactions / Notes Tab State
   const [interactions, setInteractions] = useState<CustomerInteraction[]>([]);
   const [isInteractionsLoading, setIsInteractionsLoading] = useState(false);
   const [isInteractionModalOpen, setIsInteractionModalOpen] = useState(false);
   const [newInteractionType, setNewInteractionType] = useState<InteractionType>('VISIT');
-  const [newInteractionNotes, setNewInteractionNotes] = useState('');
+  const [newInteractionSummary, setNewInteractionSummary] = useState('');
   const [newFollowUpDate, setNewFollowUpDate] = useState('');
   const [isAddingInteraction, setIsAddingInteraction] = useState(false);
+
+  // Inline Notes State (notes tab)
+  const [newNoteText, setNewNoteText] = useState('');
+  const [isAddingNote, setIsAddingNote] = useState(false);
+  const [isDeletingNote, setIsDeletingNote] = useState<number | null>(null);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
   // Assignment Modal State
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -84,8 +104,66 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   const [employeesList, setEmployeesList] = useState<SystemUser[]>([]);
   const [isAssigning, setIsAssigning] = useState(false);
 
+  // Toast Notifications
+  const [toasts, setToasts] = useState<{ id: number; type: 'success' | 'warn' | 'error'; msg: string }[]>([]);
+  let toastIdRef = 0;
 
-  // Initial fetch of customer details
+  const showToast = (type: 'success' | 'warn' | 'error', msg: string) => {
+    const id = ++toastIdRef;
+    setToasts((prev) => [...prev, { id, type, msg }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
+  };
+
+  // Overdue detection
+  const isOverdue = useMemo(() => {
+    if (!customer || !customer.current_balance || customer.current_balance <= 0) return false;
+    if (!customer.last_order_date) return false;
+    const daysSince = Math.floor(
+      (Date.now() - new Date(customer.last_order_date).getTime()) / 86400000
+    );
+    return daysSince > (customer.payment_terms_days || 30);
+  }, [customer]);
+
+  const daysOverdue = useMemo(() => {
+    if (!customer?.last_order_date) return 0;
+    const daysSince = Math.floor(
+      (Date.now() - new Date(customer.last_order_date).getTime()) / 86400000
+    );
+    return Math.max(0, daysSince - (customer.payment_terms_days || 30));
+  }, [customer]);
+
+  // Group invoices by month for the monthly breakdown
+  const invoicesByMonth = useMemo(() => {
+    const map: Record<number, Invoice[]> = {};
+    invoices.forEach((inv) => {
+      if (!inv.invoice_date) return;
+      const m = new Date(inv.invoice_date).getMonth(); // 0-based
+      if (!map[m]) map[m] = [];
+      map[m].push(inv);
+    });
+    return map;
+  }, [invoices]);
+
+  const monthlyTotals = useMemo(() => {
+    return MONTH_KEYS.map((_: string, idx: number) => {
+      const monthInvoices = invoicesByMonth[idx] || [];
+      return monthInvoices.reduce((sum: number, inv: Invoice) => sum + Number(inv.total || 0), 0);
+    });
+  }, [invoicesByMonth]);
+
+  const annualTotal = useMemo(() => monthlyTotals.reduce((s: number, v: number) => s + v, 0), [monthlyTotals]);
+
+  // Notes are interactions of type 'NOTE'
+  const notes = useMemo(
+    () => interactions.filter((i) => i.interaction_type === 'NOTE'),
+    [interactions]
+  );
+  const nonNoteInteractions = useMemo(
+    () => interactions.filter((i) => i.interaction_type !== 'NOTE'),
+    [interactions]
+  );
+
+  // Initial fetch
   const fetchCustomerDetails = async () => {
     try {
       setIsLoading(true);
@@ -115,12 +193,12 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
 
   const handleMonthlySelect = async (monthNum: number) => {
     setSelectedMonth(monthNum);
+    setExpandedMonthIdx(monthNum - 1);
     const mStr = String(monthNum).padStart(2, '0');
     const start = `${selectedYear}-${mStr}-01`;
     const lastDay = new Date(selectedYear, monthNum, 0).getDate();
     const end = `${selectedYear}-${mStr}-${String(lastDay).padStart(2, '0')}`;
     setStartDate(start);
-    setEndDate(end);
     setEndDate(end);
     try {
       setIsStatementLoading(true);
@@ -139,7 +217,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   const fetchInvoices = async () => {
     try {
       setIsInvoicesLoading(true);
-      const res = await invoiceService.getInvoices({ customer_id: customerId });
+      const res = await invoiceService.getInvoices({ customer_id: customerId, limit: 200 });
       setInvoices(res.data || []);
     } catch {
       // Fallback
@@ -185,14 +263,26 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   useEffect(() => {
     fetchCustomerDetails();
     fetchEmployees();
+    fetchInvoices();
+    fetchInteractions();
   }, [customerId]);
 
   useEffect(() => {
     if (activeTab === 'statement') fetchStatement();
     else if (activeTab === 'invoices') fetchInvoices();
     else if (activeTab === 'payments') fetchPayments();
-    else if (activeTab === 'interactions') fetchInteractions();
+    else if (activeTab === 'interactions' || activeTab === 'notes') fetchInteractions();
   }, [activeTab, customerId]);
+
+  // Overdue notification on load
+  useEffect(() => {
+    if (isOverdue && customer) {
+      showToast(
+        'warn',
+        `⚠️ ${customer.name} لم يسدد المديونية منذ ${daysOverdue} يوم إضافياً عن موعد الاستحقاق`
+      );
+    }
+  }, [isOverdue]);
 
   const handleAssignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,8 +298,9 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
       );
       setIsAssignModalOpen(false);
       fetchCustomerDetails();
+      showToast('success', 'تم إسناد الموظف بنجاح');
     } catch (err) {
-      console.error(err);
+      showToast('error', 'فشل عملية الإسناد');
     } finally {
       setIsAssigning(false);
     }
@@ -217,33 +308,95 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
 
   const handleInteractionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newInteractionNotes) return;
+    if (!newInteractionSummary.trim()) {
+      showToast('error', 'يرجى كتابة ملخص التفاعل');
+      return;
+    }
 
     try {
       setIsAddingInteraction(true);
       await interactionService.createInteraction({
         customer_id: customerId,
         interaction_type: newInteractionType,
-        notes: newInteractionNotes,
+        summary: newInteractionSummary,
         follow_up_date: newFollowUpDate || undefined,
       });
-      setNewInteractionNotes('');
+      setNewInteractionSummary('');
       setNewFollowUpDate('');
       setIsInteractionModalOpen(false);
       fetchInteractions();
+      showToast('success', 'تم تسجيل التفاعل / الزيارة بنجاح');
     } catch (err) {
-      console.error(err);
+      showToast('error', 'فشل تسجيل التفاعل');
     } finally {
       setIsAddingInteraction(false);
     }
   };
 
+  const handleAddNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNoteText.trim()) return;
+    try {
+      setIsAddingNote(true);
+      await interactionService.createInteraction({
+        customer_id: customerId,
+        interaction_type: 'NOTE',
+        summary: newNoteText.trim(),
+      });
+      setNewNoteText('');
+      fetchInteractions();
+      showToast('success', 'تم إضافة الملاحظة');
+    } catch {
+      showToast('error', 'فشل إضافة الملاحظة');
+    } finally {
+      setIsAddingNote(false);
+    }
+  };
+
+  const handleDeleteNote = async (interactionId: number) => {
+    try {
+      setIsDeletingNote(interactionId);
+      await interactionService.deleteInteraction(customerId, interactionId);
+      setInteractions((prev) => prev.filter((i) => i.id !== interactionId));
+      showToast('success', 'تم حذف الملاحظة');
+    } catch {
+      showToast('error', 'فشل حذف الملاحظة');
+    } finally {
+      setIsDeletingNote(null);
+    }
+  };
+
+  const handleDeleteAllNotes = async () => {
+    if (!confirmDeleteAll) {
+      setConfirmDeleteAll(true);
+      return;
+    }
+    try {
+      setIsDeletingAll(true);
+      await interactionService.deleteAllInteractions(customerId);
+      setInteractions([]);
+      setConfirmDeleteAll(false);
+      showToast('success', 'تم حذف جميع الملاحظات');
+    } catch {
+      showToast('error', 'فشل حذف الملاحظات');
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
 
   const formatCurrency = (val: number) => {
     return Number(val || 0).toLocaleString('ar-EG', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }) + ' ج.م';
+  };
+
+  const formatDate = (d: string) => {
+    try {
+      return new Date(d).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch {
+      return d;
+    }
   };
 
   if (isLoading) {
@@ -264,8 +417,25 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
     );
   }
 
+  // Assigned sales rep object
+  const assignedRep = employeesList.find(
+    (e) => e.id === customer.assigned_employee_id || e.full_name === customer.assigned_employee_name
+  );
+
   return (
     <div className="customer-details-page">
+      {/* Toast Notifications */}
+      {toasts.length > 0 && (
+        <div className="toast-container">
+          {toasts.map((t) => (
+            <div key={t.id} className={`toast-item toast-${t.type}`}>
+              {t.type === 'warn' ? <AlertTriangle size={16} /> : t.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+              <span>{t.msg}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Back Navigation Bar */}
       <div className="details-back-bar">
         {onNavigate && (
@@ -274,12 +444,23 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
             <span>العودة لسجل العملاء</span>
           </button>
         )}
+        {/* Overdue Alert Banner */}
+        {isOverdue && (
+          <div className="overdue-alert-banner">
+            <AlertTriangle size={16} />
+            <span>
+              ⚠️ تجاوز موعد السداد — المديونية:{' '}
+              <strong>{formatCurrency(customer.current_balance || 0)}</strong> — متأخر{' '}
+              <strong>{daysOverdue} يوم</strong> عن تاريخ الاستحقاق
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Customer Header Summary Card */}
-      <div className="sheikh-card customer-master-header">
+      <div className={`sheikh-card customer-master-header ${isOverdue ? 'header-overdue' : ''}`}>
         <div className="master-header-main">
-          <div className="master-avatar">
+          <div className={`master-avatar ${isOverdue ? 'avatar-overdue' : ''}`}>
             <Building size={28} />
           </div>
           <div className="master-info-col">
@@ -292,6 +473,12 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
               <span className={`classification-badge class-${customer.classification}`}>
                 فئة {customer.classification}
               </span>
+              {isOverdue && (
+                <span className="overdue-badge">
+                  <AlertTriangle size={13} />
+                  لم يسدد — {daysOverdue} يوم
+                </span>
+              )}
             </div>
             {customer.trade_name && (
               <div className="master-trade-name">الاسم التجاري: {customer.trade_name}</div>
@@ -312,7 +499,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
               <span className="meta-item">
                 <Clock size={14} />
                 <span>
-                  طريقة السداد: {customer.payment_type === 'CREDIT' ? `آجل (${customer.payment_terms_days} يوم)` : 'نقدي'}
+                  نوع العميل: {customer.payment_type === 'CREDIT' ? `آجل (${customer.payment_terms_days} يوم)` : 'نقدي'}
                 </span>
               </span>
               <span className="meta-item">
@@ -322,6 +509,41 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Sales Rep Info Box */}
+        {(customer.assigned_employee_name || customer.accountant_name) && (
+          <div className="rep-info-box">
+            <div className="rep-info-header">
+              <User size={15} />
+              <span>فريق الخدمة المسؤول</span>
+            </div>
+            <div className="rep-info-grid">
+              {customer.assigned_employee_name && (
+                <div className="rep-card">
+                  <span className="rep-role-lbl">مندوب المبيعات</span>
+                  <span className="rep-name">{customer.assigned_employee_name}</span>
+                  {assignedRep?.phone && (
+                    <a href={`tel:${assignedRep.phone}`} className="rep-phone">
+                      <Phone size={12} /> {assignedRep.phone}
+                    </a>
+                  )}
+                </div>
+              )}
+              {customer.accountant_name && (
+                <div className="rep-card">
+                  <span className="rep-role-lbl">مسؤول الحسابات</span>
+                  <span className="rep-name">{customer.accountant_name}</span>
+                </div>
+              )}
+              {customer.follow_up_employee_name && (
+                <div className="rep-card">
+                  <span className="rep-role-lbl">موظف المتابعة</span>
+                  <span className="rep-name">{customer.follow_up_employee_name}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Financial KPIs 4-Card Summary Bar */}
@@ -335,23 +557,30 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
         <div className="sheikh-card cust-stat-box">
           <span className="stat-label">إجمالي المسدد</span>
           <div className="stat-value text-success">{formatCurrency(customer.total_paid || 0)}</div>
-          <span className="stat-sub">آخر سداد: {customer.last_payment_date || '—'}</span>
+          <span className="stat-sub">آخر سداد: {customer.last_payment_date ? formatDate(customer.last_payment_date) : '—'}</span>
         </div>
 
-        <div className="sheikh-card cust-stat-box">
+        <div className={`sheikh-card cust-stat-box ${isOverdue ? 'kpi-overdue' : ''}`}>
           <span className="stat-label">الرصيد الحالي (المديونية)</span>
           <div className={`stat-value ${(customer.current_balance || 0) > 0 ? 'text-amber' : 'text-success'}`}>
             {formatCurrency(customer.current_balance || 0)}
           </div>
           <span className="stat-sub">
-            الحد الائتماني: {formatCurrency(customer.credit_limit || 0)}
+            {isOverdue
+              ? `⚠️ متأخر ${daysOverdue} يوم عن موعد السداد`
+              : `الحد الائتماني: ${formatCurrency(customer.credit_limit || 0)}`}
           </span>
+          {isOverdue && customer.last_order_date && (
+            <span className="stat-sub text-danger">
+              تاريخ آخر طلب: {formatDate(customer.last_order_date)} — استحقاق خلال {customer.payment_terms_days} يوم
+            </span>
+          )}
         </div>
 
         <div className="sheikh-card cust-stat-box">
           <span className="stat-label">متوسط قيمة الفاتورة</span>
           <div className="stat-value">{formatCurrency(customer.avg_invoice || 0)}</div>
-          <span className="stat-sub">آخر طلب: {customer.last_order_date || '—'}</span>
+          <span className="stat-sub">آخر طلب: {customer.last_order_date ? formatDate(customer.last_order_date) : '—'}</span>
         </div>
       </div>
 
@@ -362,7 +591,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
           onClick={() => setActiveTab('statement')}
         >
           <Receipt size={16} />
-          <span>كشف الحساب التفصيلي</span>
+          <span>كشف الحساب الشهري</span>
         </button>
         <button
           className={`tab-link ${activeTab === 'invoices' ? 'tab-link-active' : ''}`}
@@ -376,142 +605,107 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
           onClick={() => setActiveTab('payments')}
         >
           <CreditCard size={16} />
-          <span>سندات التحصيل والمقبوضات</span>
+          <span>سندات التحصيل</span>
         </button>
         <button
           className={`tab-link ${activeTab === 'interactions' ? 'tab-link-active' : ''}`}
           onClick={() => setActiveTab('interactions')}
         >
-          <User size={16} />
-          <span>الزيارات والتفاعلات</span>
+          <MessageSquare size={16} />
+          <span>الزيارات والمتابعات</span>
+        </button>
+        <button
+          className={`tab-link ${activeTab === 'notes' ? 'tab-link-active' : ''}`}
+          onClick={() => setActiveTab('notes')}
+        >
+          <StickyNote size={16} />
+          <span>ملاحظات متابعة {notes.length > 0 ? `(${notes.length})` : ''}</span>
         </button>
         <button
           className={`tab-link ${activeTab === 'overview' ? 'tab-link-active' : ''}`}
           onClick={() => setActiveTab('overview')}
         >
           <Building size={16} />
-          <span>البيانات العامة للمنشأة</span>
+          <span>البيانات العامة</span>
         </button>
       </div>
 
 
-      {/* TAB 1: STATEMENT (كشف الحساب) */}
+      {/* TAB 1: STATEMENT (كشف الحساب الشهري) */}
       {activeTab === 'statement' && (
         <div className="tab-content-wrapper">
-          {/* 2026 Monthly Visual Bar */}
-          {(() => {
-            const excelCustomer = EXCEL_CUSTOMERS_2026.find(
-              (item) =>
-                item.code === customer.customer_code ||
-                item.name === customer.name ||
-                item.id === customer.id
-            );
-            if (!excelCustomer) return null;
+          {/* Annual Total Badge — shown prominently at TOP */}
+          <div className="annual-total-header-card sheikh-card">
+            <div className="annual-total-left">
+              <FileSpreadsheet size={22} style={{ color: '#059669' }} />
+              <div>
+                <div className="annual-total-title">سجل مسحوبات العميل الشهرية لعام {selectedYear}</div>
+                <div className="annual-total-sub">اضغط على أي شهر لعرض الفواتير المرتبطة به وتصفية كشف الحساب</div>
+              </div>
+            </div>
+            <div className="annual-total-badge">
+              <span className="annual-lbl">إجمالي مسحوبات {selectedYear}</span>
+              <span className="annual-val">{formatCurrency(annualTotal)}</span>
+              <span className="annual-count">{invoices.length} فاتورة</span>
+            </div>
+          </div>
 
-            const annualSum = MONTH_KEYS.reduce(
-              (sum, k) => sum + (excelCustomer.months[k] || 0),
-              0
-            );
+          {/* 12-Month Grid */}
+          <div className="sheikh-card monthly-grid-card">
+            <div className="monthly-cards-grid">
+              {ARABIC_MONTHS.map((mName, idx) => {
+                const monthInvoices = invoicesByMonth[idx] || [];
+                const monthTotal = monthlyTotals[idx] || 0;
+                const isCurrent = selectedMonth === idx + 1;
+                const isExpanded = expandedMonthIdx === idx;
 
-            return (
-              <div
-                className="sheikh-card mb-3"
-                style={{
-                  padding: '16px 20px',
-                  background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-                  border: '1px solid #cbd5e1',
-                  marginBottom: '1rem',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '12px',
-                    flexWrap: 'wrap',
-                    gap: '8px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <FileSpreadsheet size={18} style={{ color: '#059669' }} />
-                    <strong style={{ fontSize: '0.95rem', color: '#0f172a' }}>
-                      سجل مسحوبات العميل الشهرية لعام 2026 (مطابقة شيت الحسابات):
-                    </strong>
-                  </div>
+                return (
                   <div
-                    style={{
-                      fontSize: '0.85rem',
-                      background: '#fef3c7',
-                      padding: '4px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid #fde68a',
-                      color: '#92400e',
-                      fontWeight: 'bold',
+                    key={idx}
+                    className={`month-cell ${isCurrent ? 'month-cell-active' : ''} ${monthTotal > 0 ? 'month-cell-has-data' : 'month-cell-empty'}`}
+                    onClick={() => {
+                      handleMonthlySelect(idx + 1);
+                      setExpandedMonthIdx(isExpanded ? null : idx);
                     }}
                   >
-                    إجمالي مسحوبات عام 2026: {formatCurrency(annualSum)}
+                    <div className="month-cell-header">
+                      <span className="month-cell-name">{mName}</span>
+                      {monthInvoices.length > 0 && (
+                        <span className="month-inv-count">{monthInvoices.length} فاتورة</span>
+                      )}
+                    </div>
+                    <div className="month-cell-total">
+                      {monthTotal > 0
+                        ? Number(monthTotal).toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        : '0.00'}
+                    </div>
+                    <div className="month-cell-currency">ج.م</div>
+
+                    {/* Expanded invoice list inside month cell */}
+                    {isExpanded && monthInvoices.length > 0 && (
+                      <div className="month-inv-list" onClick={(e) => e.stopPropagation()}>
+                        {monthInvoices.map((inv) => (
+                          <div key={inv.id} className="month-inv-item">
+                            <span className="inv-num">{inv.invoice_number}</span>
+                            <span className="inv-date">{inv.invoice_date}</span>
+                            <span className="inv-amount font-bold">{formatCurrency(inv.total)}</span>
+                            <span className={`inv-status-dot ${inv.payment_status}`}></span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {isExpanded && monthInvoices.length === 0 && (
+                      <div className="month-no-inv">لا توجد فواتير</div>
+                    )}
                   </div>
-                </div>
+                );
+              })}
+            </div>
+          </div>
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(85px, 1fr))',
-                    gap: '8px',
-                  }}
-                >
-                  {MONTH_KEYS.map((k, idx) => {
-                    const val = excelCustomer.months[k] || 0;
-                    const isCurrent = selectedMonth === idx + 1;
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => handleMonthlySelect(idx + 1)}
-                        style={{
-                          background: isCurrent ? '#fffbeb' : val > 0 ? '#ffffff' : '#f1f5f9',
-                          border: isCurrent ? '2px solid #f59e0b' : '1px solid #cbd5e1',
-                          borderRadius: '8px',
-                          padding: '8px 6px',
-                          textAlign: 'center',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '3px',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: '0.72rem',
-                            color: '#64748b',
-                            fontWeight: 'bold',
-                          }}
-                        >
-                          {ARABIC_MONTHS[idx]}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: '0.82rem',
-                            fontWeight: '800',
-                            fontFamily: 'monospace',
-                            color: val > 0 ? '#0f172a' : '#94a3b8',
-                          }}
-                        >
-                          {val > 0 ? Number(val).toLocaleString('ar-EG') : '0'}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Statement Filters & Monthly Selector */}
+          {/* Statement Filters */}
           <div className="sheikh-card statement-filter-card">
             <div className="statement-controls-row">
-              {/* Monthly Quick Selector */}
               <div className="monthly-selector-group">
                 <span className="selector-title">شهور سنة {selectedYear}:</span>
                 <div className="months-pills-row">
@@ -527,7 +721,6 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                 </div>
               </div>
 
-              {/* Date Range Inputs */}
               <div className="date-range-group">
                 <div className="date-input-wrap">
                   <label>من تاريخ:</label>
@@ -651,7 +844,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
       {activeTab === 'invoices' && (
         <div className="tab-content-wrapper">
           <div className="tab-header-actions-row">
-            <h3>سجل فواتير المبيعات</h3>
+            <h3>سجل فواتير المبيعات الكامل</h3>
             {onNavigate && (
               <button onClick={() => onNavigate('/invoices')} className="btn-gold-small">
                 <PlusCircle size={15} />
@@ -669,9 +862,9 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                   <thead>
                     <tr>
                       <th>رقم الفاتورة</th>
-                      <th>تاريخ الفاتورة</th>
+                      <th>تاريخ الإصدار</th>
                       <th>تاريخ الاستحقاق</th>
-                      <th>طريقة السداد</th>
+                      <th>نوع العميل</th>
                       <th>الإجمالي</th>
                       <th>المسدد</th>
                       <th>المتبقي</th>
@@ -679,34 +872,41 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {invoices.map((inv) => (
-                      <tr key={inv.id}>
-                        <td>
-                          <span className="code-pill">{inv.invoice_number}</span>
-                        </td>
-                        <td>{inv.invoice_date}</td>
-                        <td>{inv.due_date}</td>
-                        <td>
-                          <span className={`payment-type-badge ${inv.payment_type === 'CREDIT' ? 'badge-credit' : 'badge-cash'}`}>
-                            {inv.payment_type === 'CREDIT' ? 'آجل' : 'نقدي'}
-                          </span>
-                        </td>
-                        <td className="font-bold">{formatCurrency(inv.total)}</td>
-                        <td className="text-success font-semibold">{formatCurrency(inv.paid_amount || 0)}</td>
-                        <td className="text-amber font-semibold">{formatCurrency(inv.remaining_amount || inv.total)}</td>
-                        <td>
-                          <span className={`invoice-status-pill status-${inv.payment_status}`}>
-                            {inv.payment_status === 'PAID'
-                              ? 'مدفوعة بالكامل'
-                              : inv.payment_status === 'PARTIALLY_PAID'
-                              ? 'مدفوعة جزئياً'
-                              : inv.payment_status === 'OVERDUE'
-                              ? 'متأخرة'
-                              : 'غير مدفوعة'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {invoices.map((inv) => {
+                      const isInvOverdue =
+                        inv.payment_status === 'OVERDUE' ||
+                        (inv.due_date && new Date(inv.due_date) < new Date() && inv.payment_status !== 'PAID');
+                      return (
+                        <tr key={inv.id} className={isInvOverdue ? 'row-overdue' : ''}>
+                          <td>
+                            <span className="code-pill">{inv.invoice_number}</span>
+                          </td>
+                          <td>{inv.invoice_date}</td>
+                          <td className={isInvOverdue ? 'text-danger font-bold' : ''}>
+                            {inv.due_date || '—'}
+                          </td>
+                          <td>
+                            <span className={`payment-type-badge ${inv.payment_type === 'CREDIT' ? 'badge-credit' : 'badge-cash'}`}>
+                              {inv.payment_type === 'CREDIT' ? 'آجل' : 'نقدي'}
+                            </span>
+                          </td>
+                          <td className="font-bold">{formatCurrency(inv.total)}</td>
+                          <td className="text-success font-semibold">{formatCurrency(inv.paid_amount || 0)}</td>
+                          <td className="text-amber font-semibold">{formatCurrency(inv.remaining_amount || inv.total)}</td>
+                          <td>
+                            <span className={`invoice-status-pill status-${inv.payment_status}`}>
+                              {inv.payment_status === 'PAID'
+                                ? 'مدفوعة بالكامل'
+                                : inv.payment_status === 'PARTIALLY_PAID'
+                                ? 'مدفوعة جزئياً'
+                                : inv.payment_status === 'OVERDUE'
+                                ? '⚠️ متأخرة'
+                                : 'غير مدفوعة'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -787,7 +987,164 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
         </div>
       )}
 
-      {/* TAB 4: OVERVIEW (البيانات العامة) */}
+      {/* TAB 4: INTERACTIONS (الزيارات والمتابعات) */}
+      {activeTab === 'interactions' && (
+        <div className="tab-content-wrapper">
+          <div className="tab-header-actions-row">
+            <h3>سجل الزيارات الميدانية والمتابعات</h3>
+            <button
+              onClick={() => setIsInteractionModalOpen(true)}
+              className="btn-gold-small"
+            >
+              <PlusCircle size={15} />
+              <span>تسجيل زيارة / متابعة</span>
+            </button>
+          </div>
+
+          <div className="sheikh-card table-wrapper-card">
+            {isInteractionsLoading ? (
+              <div className="table-loading-box">جاري تحميل سجل التفاعلات...</div>
+            ) : nonNoteInteractions.length > 0 ? (
+              <div className="table-responsive">
+                <table className="sheikh-table">
+                  <thead>
+                    <tr>
+                      <th>التاريخ</th>
+                      <th>نوع التفاعل</th>
+                      <th>الموظف المسؤول</th>
+                      <th>الملخص والبيان</th>
+                      <th>تاريخ المتابعة القادمة</th>
+                      <th>الحالة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nonNoteInteractions.map((it) => (
+                      <tr key={it.id}>
+                        <td>{formatDate(it.interaction_date)}</td>
+                        <td>
+                          <span className={`method-pill`}>
+                            {it.interaction_type === 'VISIT'
+                              ? '🚗 زيارة ميدانية'
+                              : it.interaction_type === 'CALL'
+                              ? '📞 مكالمة هاتفية'
+                              : it.interaction_type === 'FOLLOW_UP'
+                              ? '🔔 متابعة تحصيل'
+                              : '📋 ملاحظة'}
+                          </span>
+                        </td>
+                        <td className="font-semibold">{it.employee_name || 'موظف النظام'}</td>
+                        <td>{it.summary || it.notes}</td>
+                        <td>
+                          {(it as any).follow_up_date ? (
+                            <span className="follow-up-date-badge">
+                              <Calendar size={12} />
+                              {formatDate((it as any).follow_up_date)}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td>
+                          <span className={`status-pill ${(it as any).is_resolved ? 'status-ok' : 'status-muted'}`}>
+                            {(it as any).is_resolved ? 'مكتملة' : 'قيد المتابعة'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="empty-state-box">
+                <MessageSquare size={36} className="empty-state-icon" />
+                <h4>لا توجد زيارات أو متابعات مسجلة</h4>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: NOTES (ملاحظات المتابعة) */}
+      {activeTab === 'notes' && (
+        <div className="tab-content-wrapper">
+          <div className="tab-header-actions-row">
+            <h3>
+              <StickyNote size={18} style={{ marginLeft: '6px', color: '#d97706' }} />
+              ملاحظات متابعة العملاء
+            </h3>
+            {notes.length > 0 && (
+              <button
+                onClick={handleDeleteAllNotes}
+                className={`btn-danger-small ${confirmDeleteAll ? 'btn-confirm-danger' : ''}`}
+                disabled={isDeletingAll}
+              >
+                <Trash size={14} />
+                <span>{confirmDeleteAll ? '⚠️ تأكيد حذف الكل' : 'حذف جميع الملاحظات'}</span>
+              </button>
+            )}
+          </div>
+
+          {/* Add New Note inline */}
+          <div className="sheikh-card notes-add-card">
+            <form onSubmit={handleAddNote} className="note-add-form">
+              <textarea
+                className="sheikh-textarea note-textarea"
+                placeholder="اكتب ملاحظة عن العميل هنا... (مثال: العميل طلب خصم على الشحنة القادمة)"
+                value={newNoteText}
+                onChange={(e) => setNewNoteText(e.target.value)}
+                rows={3}
+              />
+              <button type="submit" className="btn-gold-small" disabled={isAddingNote || !newNoteText.trim()}>
+                <PlusCircle size={15} />
+                <span>{isAddingNote ? 'جاري الحفظ...' : '+ إضافة ملاحظة'}</span>
+              </button>
+            </form>
+          </div>
+
+          {/* Notes List */}
+          {isInteractionsLoading ? (
+            <div className="table-loading-box">جاري تحميل الملاحظات...</div>
+          ) : notes.length > 0 ? (
+            <div className="notes-list-grid">
+              {notes.map((note) => (
+                <div key={note.id} className="note-card">
+                  <div className="note-card-header">
+                    <div className="note-meta">
+                      <span className="note-employee">{note.employee_name || 'موظف'}</span>
+                      <span className="note-date">{formatDate(note.interaction_date)}</span>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteNote(note.id)}
+                      className="note-delete-btn"
+                      disabled={isDeletingNote === note.id}
+                      title="حذف هذه الملاحظة"
+                    >
+                      {isDeletingNote === note.id ? '...' : <X size={14} />}
+                    </button>
+                  </div>
+                  <div className="note-content">{note.summary || note.notes}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state-box">
+              <StickyNote size={36} className="empty-state-icon" />
+              <h4>لا توجد ملاحظات مسجلة لهذا العميل</h4>
+              <p>استخدم الحقل أعلاه لإضافة ملاحظة جديدة</p>
+            </div>
+          )}
+
+          {confirmDeleteAll && (
+            <div className="confirm-delete-banner">
+              <AlertTriangle size={18} />
+              <span>هل أنت متأكد من حذف جميع الملاحظات ({notes.length} ملاحظة)؟ هذا الإجراء لا يمكن التراجع عنه.</span>
+              <button onClick={() => setConfirmDeleteAll(false)} className="btn-secondary" style={{ padding: '4px 12px' }}>
+                إلغاء
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 6: OVERVIEW (البيانات العامة) */}
       {activeTab === 'overview' && (
         <div className="tab-content-wrapper">
           <div className="sheikh-card overview-card">
@@ -822,12 +1179,12 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                 <span className="field-value">{customer.address || '—'}</span>
               </div>
               <div className="overview-field">
-                <span className="field-label">طريقة التعامل:</span>
-                <span className="field-value">{customer.payment_type === 'CREDIT' ? 'آجل' : 'نقدي'}</span>
-              </div>
-              <div className="overview-field">
-                <span className="field-label">فترة السداد المعتمدة:</span>
-                <span className="field-value">{customer.payment_terms_days} يوم</span>
+                <span className="field-label">نوع العميل:</span>
+                <span className="field-value font-bold">
+                  {customer.payment_type === 'CREDIT'
+                    ? `آجل — سداد مؤجل (${customer.payment_terms_days} يوم)`
+                    : 'نقدي — دفع فوري'}
+                </span>
               </div>
               <div className="overview-field">
                 <span className="field-label">التصنيف:</span>
@@ -855,7 +1212,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
               </div>
               <div className="overview-field">
                 <span className="field-label">تاريخ التسجيل:</span>
-                <span className="field-value">{new Date(customer.created_at).toLocaleDateString('ar-EG')}</span>
+                <span className="field-value">{formatDate(customer.created_at)}</span>
               </div>
             </div>
 
@@ -871,74 +1228,6 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
         </div>
       )}
 
-      {/* TAB 5: INTERACTIONS (سجل الزيارات والمتابعات) */}
-      {activeTab === 'interactions' && (
-        <div className="tab-content-wrapper">
-          <div className="tab-header-actions-row">
-            <h3>سجل الزيارات الميدانية والتفاعلات والمتابعات</h3>
-            <button
-              onClick={() => setIsInteractionModalOpen(true)}
-              className="btn-gold-small"
-            >
-              <PlusCircle size={15} />
-              <span>تسجيل زيارة / تفاعل جديد</span>
-            </button>
-          </div>
-
-          <div className="sheikh-card table-wrapper-card">
-            {isInteractionsLoading ? (
-              <div className="table-loading-box">جاري تحميل سجل التفاعلات...</div>
-            ) : interactions.length > 0 ? (
-              <div className="table-responsive">
-                <table className="sheikh-table">
-                  <thead>
-                    <tr>
-                      <th>التاريخ</th>
-                      <th>نوع التفاعل</th>
-                      <th>الموظف المسؤول</th>
-                      <th>البيان والملاحظات</th>
-                      <th>تاريخ المتابعة القادمة</th>
-                      <th>الحالة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {interactions.map((it) => (
-                      <tr key={it.id}>
-                        <td>{new Date(it.interaction_date).toLocaleDateString('ar-EG')}</td>
-                        <td>
-                          <span className={`method-pill`}>
-                            {it.interaction_type === 'VISIT'
-                              ? 'زيارة ميدانية'
-                              : it.interaction_type === 'CALL'
-                              ? 'مكالمة هاتفية'
-                              : it.interaction_type === 'FOLLOW_UP'
-                              ? 'متابعة تحصيل'
-                              : 'ملاحظة إدارية'}
-                          </span>
-                        </td>
-                        <td className="font-semibold">{it.employee_name || 'موظف النظام'}</td>
-                        <td>{it.notes}</td>
-                        <td>{it.follow_up_date ? new Date(it.follow_up_date).toLocaleDateString('ar-EG') : '—'}</td>
-                        <td>
-                          <span className={`status-pill ${it.is_resolved ? 'status-ok' : 'status-muted'}`}>
-                            {it.is_resolved ? 'مكتملة' : 'قيد المتابعة'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="empty-state-box">
-                <User size={36} className="empty-state-icon" />
-                <h4>لا توجد زيارات أو تفاعلات مسجلة لهذا العميل حتى الآن</h4>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Modal: Assign Employee */}
       {isAssignModalOpen && (
         <div className="modal-overlay" onClick={() => setIsAssignModalOpen(false)}>
@@ -946,7 +1235,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
             <div className="modal-header">
               <h3 className="modal-title">إسناد موظف للعميل ({customer.name})</h3>
               <button onClick={() => setIsAssignModalOpen(false)} className="modal-close-btn">
-                <AlertCircle size={18} />
+                <X size={18} />
               </button>
             </div>
 
@@ -1005,14 +1294,14 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
         </div>
       )}
 
-      {/* Modal: Add Interaction */}
+      {/* Modal: Add Interaction/Visit */}
       {isInteractionModalOpen && (
         <div className="modal-overlay" onClick={() => setIsInteractionModalOpen(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">تسجيل زيارة أو تفاعل جديد للعميل</h3>
+              <h3 className="modal-title">تسجيل زيارة أو متابعة جديدة</h3>
               <button onClick={() => setIsInteractionModalOpen(false)} className="modal-close-btn">
-                <AlertCircle size={18} />
+                <X size={18} />
               </button>
             </div>
 
@@ -1024,18 +1313,18 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                   onChange={(e: any) => setNewInteractionType(e.target.value)}
                   className="sheikh-select"
                 >
-                  <option value="VISIT">زيارة ميدانية</option>
-                  <option value="CALL">مكالمة هاتفية</option>
-                  <option value="FOLLOW_UP">متابعة تحصيل</option>
-                  <option value="NOTE">ملاحظة</option>
+                  <option value="VISIT">🚗 زيارة ميدانية</option>
+                  <option value="CALL">📞 مكالمة هاتفية</option>
+                  <option value="FOLLOW_UP">🔔 متابعة تحصيل</option>
+                  <option value="NOTE">📋 ملاحظة إدارية</option>
                 </select>
               </div>
 
               <div className="form-group">
-                <label className="form-label">البيان والملاحظات <span className="req-star">*</span></label>
+                <label className="form-label">ملخص الزيارة / التفاعل <span className="req-star">*</span></label>
                 <textarea
-                  value={newInteractionNotes}
-                  onChange={(e) => setNewInteractionNotes(e.target.value)}
+                  value={newInteractionSummary}
+                  onChange={(e) => setNewInteractionSummary(e.target.value)}
                   className="sheikh-textarea"
                   rows={3}
                   placeholder="تفاصيل المقابلة، الطلبات، أو ملاحظات التحصيل..."
@@ -1044,13 +1333,21 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
               </div>
 
               <div className="form-group">
-                <label className="form-label">تاريخ المتابعة القادمة (اختياري)</label>
+                <label className="form-label">
+                  <Calendar size={14} style={{ marginLeft: '4px' }} />
+                  تاريخ المتابعة القادمة (اختياري)
+                </label>
                 <input
                   type="date"
                   value={newFollowUpDate}
                   onChange={(e) => setNewFollowUpDate(e.target.value)}
                   className="sheikh-input"
                 />
+                {newFollowUpDate && (
+                  <span className="input-hint">
+                    <Bell size={12} /> ستظهر تذكرة في لوحة التحكم عند اقتراب هذا التاريخ
+                  </span>
+                )}
               </div>
 
               <div className="modal-footer">
@@ -1068,4 +1365,3 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
     </div>
   );
 };
-

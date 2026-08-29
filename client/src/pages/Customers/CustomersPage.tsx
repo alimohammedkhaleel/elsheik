@@ -11,7 +11,7 @@ import {
   Package,
   Trash2,
   Edit2,
-  FileSpreadsheet,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { customerService, CustomerFilters } from '../../services/api/customerService';
@@ -20,7 +20,6 @@ import { productService, Product } from '../../services/api/productService';
 import { invoiceService } from '../../services/api/invoiceService';
 import { Customer, CustomerClassification, PaymentType } from '../../types/financial';
 import { User } from '../../types/auth';
-import { MonthlyExcelSheetModal } from '../../components/customers/MonthlyExcelSheetModal';
 import './CustomersPage.css';
 
 interface CustomersPageProps {
@@ -55,8 +54,6 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
   // Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
-  const [selectedCustomerForSheet, setSelectedCustomerForSheet] = useState<string | null>(null);
   const [targetCustomer, setTargetCustomer] = useState<Customer | null>(null);
 
   // Form State - Create Customer
@@ -386,29 +383,16 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
 
   return (
     <div className="customers-page-container">
-      {/* Header with Title and Actions */}
+      {/* Header with Title and Create Action */}
       <div className="page-header-row">
         <div>
           <h1 className="page-main-title">سجل العملاء ومناطق التوزيع</h1>
           <p className="page-sub-title">إدارة بيانات العملاء، شروط السداد، ومتابعة الأرصدة والمسؤوليات</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => {
-              setSelectedCustomerForSheet(null);
-              setIsExcelModalOpen(true);
-            }}
-            className="btn-header-monthly-sheet"
-            title="عرض شيت متابعة حسابات العملاء الشهري 2026"
-          >
-            <FileSpreadsheet size={18} />
-            <span>📊 شيت متابعة حسابات العملاء 2026</span>
-          </button>
-          <button onClick={() => { setIsCreateModalOpen(true); fetchProducts(); }} className="btn-gold">
-            <Plus size={16} />
-            <span>إضافة عميل جديد</span>
-          </button>
-        </div>
+        <button onClick={() => { setIsCreateModalOpen(true); fetchProducts(); }} className="btn-gold">
+          <Plus size={16} />
+          <span>إضافة عميل جديد</span>
+        </button>
       </div>
 
       {/* Feedback Message */}
@@ -495,6 +479,40 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
         </div>
       </div>
 
+      {/* Overdue Summary Alert */}
+      {(() => {
+        const overdueCount = customers.filter(
+          (c) =>
+            (c.current_balance || 0) > 0 &&
+            c.last_order_date &&
+            Math.floor((Date.now() - new Date(c.last_order_date).getTime()) / 86400000) >
+              (c.payment_terms_days || 30)
+        ).length;
+
+        if (overdueCount === 0) return null;
+        return (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              backgroundColor: '#fee2e2',
+              border: '1px solid #fca5a5',
+              padding: '12px 18px',
+              borderRadius: '8px',
+              color: '#991b1b',
+              fontSize: '0.88rem',
+              fontWeight: 700,
+            }}
+          >
+            <AlertTriangle size={20} />
+            <span>
+              تنبيه رقابي: يوجد عدد <strong>{overdueCount}</strong> عميل تجاوزوا المهلة المحددة لسداد المستحقات والمديونيات!
+            </span>
+          </div>
+        );
+      })()}
+
       {/* Main Customers Table Card */}
       <div className="sheikh-card table-wrapper-card">
         <div className="table-header-info">
@@ -513,7 +531,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
                   <th>المدينة / العنوان</th>
                   <th>الهاتف</th>
                   <th>المندوب المسؤول</th>
-                  <th>طريقة التعامل</th>
+                  <th>نوع العميل</th>
                   <th>التصنيف</th>
                   <th>الحد الائتماني</th>
                   <th>الرصيد القائم</th>
@@ -521,108 +539,131 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
                 </tr>
               </thead>
               <tbody>
-                {customers.map((c) => (
-                  <tr key={c.id}>
-                    <td>
-                      <span className="code-pill">{c.customer_code}</span>
-                    </td>
-                    <td>
-                      <div className="cust-name-col">
-                        <strong className="cust-primary-name">{c.name}</strong>
-                        {c.trade_name && (
-                          <span className="cust-trade-name">{c.trade_name}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="cust-address-col">
-                        <span>{c.city || '—'}</span>
-                        {c.address && <small className="text-muted">{c.address}</small>}
-                      </div>
-                    </td>
-                    <td>
-                      <span className="phone-text">{c.phone || '—'}</span>
-                    </td>
-                    <td>
-                      {c.assigned_employee_name ? (
-                        <span className="emp-assigned-tag">{c.assigned_employee_name}</span>
-                      ) : (
-                        <span className="text-muted">غير مخصص</span>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`payment-pill ${c.payment_type === 'CREDIT' ? 'pill-credit' : 'pill-cash'}`}>
-                        {c.payment_type === 'CREDIT' ? `آجل (${c.payment_terms_days} يوم)` : 'نقدي'}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`class-badge class-${c.classification?.toLowerCase()}`}>
-                        فئة {c.classification}
-                      </span>
-                    </td>
-                    <td className="font-semibold">{formatCurrency(c.credit_limit || 0)}</td>
-                    <td>
-                      <span className={`balance-value ${(c.current_balance || 0) > 0 ? 'balance-due' : 'balance-clear'}`}>
-                        {formatCurrency(c.current_balance || 0)}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="row-actions-group">
-                        <button
-                          onClick={() => {
-                            setSelectedCustomerForSheet(c.customer_code);
-                            setIsExcelModalOpen(true);
-                          }}
-                          className="btn-monthly-statement"
-                          title="عرض كشف الشهور والمعاملات لعام 2026"
-                        >
-                          <FileSpreadsheet size={15} />
-                          <span>كشف الشهور</span>
-                        </button>
-                        {onNavigate && (
-                          <button
-                            onClick={() => onNavigate(`/customers/${c.id}`)}
-                            className="btn-action-icon"
-                            title="الملف التفصيلي وكشف الحساب"
-                          >
-                            <Eye size={15} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => openEditModal(c)}
-                          className="btn-action-icon"
-                          title="تعديل بيانات العميل"
-                          style={{ color: '#d97706' }}
-                        >
-                          <Edit2 size={15} />
-                        </button>
-                        {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
-                          <>
-                            <button
-                              onClick={() => {
-                                setTargetCustomer(c);
-                                setAssignEmployeeId(c.assigned_employee_id ? String(c.assigned_employee_id) : '');
-                                setIsAssignModalOpen(true);
+                {customers.map((c) => {
+                  const daysSinceLastOrder = c.last_order_date
+                    ? Math.floor((Date.now() - new Date(c.last_order_date).getTime()) / 86400000)
+                    : 0;
+                  const isOverdue =
+                    (c.current_balance || 0) > 0 &&
+                    c.last_order_date &&
+                    daysSinceLastOrder > (c.payment_terms_days || 30);
+                  const daysOverdue = Math.max(0, daysSinceLastOrder - (c.payment_terms_days || 30));
+
+                  return (
+                    <tr key={c.id} style={isOverdue ? { backgroundColor: '#fff5f5' } : undefined}>
+                      <td>
+                        <span className="code-pill">{c.customer_code}</span>
+                      </td>
+                      <td>
+                        <div className="cust-name-col">
+                          <strong className="cust-primary-name">{c.name}</strong>
+                          {c.trade_name && (
+                            <span className="cust-trade-name">{c.trade_name}</span>
+                          )}
+                          {isOverdue && (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                background: '#fee2e2',
+                                color: '#dc2626',
+                                fontSize: '0.7rem',
+                                fontWeight: 800,
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                border: '1px solid #fca5a5',
+                                marginTop: '3px',
+                                width: 'fit-content',
                               }}
-                              className="btn-action-icon"
-                              title="تعيين المندوب المسؤول"
                             >
-                              <UserCheck size={15} />
-                            </button>
-                            <button
-                              onClick={() => openDeleteModal(c)}
-                              className="btn-action-icon"
-                              title="حذف العميل"
-                              style={{ color: '#dc2626' }}
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </>
+                              <AlertTriangle size={11} /> متأخر {daysOverdue} يوم عن السداد
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="cust-address-col">
+                          <span>{c.city || '—'}</span>
+                          {c.address && <small className="text-muted">{c.address}</small>}
+                        </div>
+                      </td>
+                      <td>
+                        <span className="phone-text">{c.phone || '—'}</span>
+                      </td>
+                      <td>
+                        {c.assigned_employee_name ? (
+                          <span className="emp-assigned-tag">{c.assigned_employee_name}</span>
+                        ) : (
+                          <span className="text-muted">غير مخصص</span>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td>
+                        <span className={`payment-pill ${c.payment_type === 'CREDIT' ? 'pill-credit' : 'pill-cash'}`}>
+                          {c.payment_type === 'CREDIT' ? `آجل (${c.payment_terms_days} يوم)` : 'نقدي'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`class-badge class-${c.classification?.toLowerCase()}`}>
+                          فئة {c.classification}
+                        </span>
+                      </td>
+                      <td className="font-semibold">{formatCurrency(c.credit_limit || 0)}</td>
+                      <td>
+                        <span
+                          className={`balance-value ${(c.current_balance || 0) > 0 ? 'balance-due' : 'balance-clear'}`}
+                          style={isOverdue ? { color: '#dc2626', fontWeight: 800 } : undefined}
+                        >
+                          {formatCurrency(c.current_balance || 0)}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="row-actions-group">
+                          {onNavigate && (
+                            <button
+                              onClick={() => onNavigate(`/customers/${c.id}`)}
+                              className="btn-action-icon"
+                              title="الملف التفصيلي وكشف الحساب"
+                            >
+                              <Eye size={15} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => openEditModal(c)}
+                            className="btn-action-icon"
+                            title="تعديل بيانات العميل"
+                            style={{ color: '#d97706' }}
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                          {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setTargetCustomer(c);
+                                  setAssignEmployeeId(c.assigned_employee_id ? String(c.assigned_employee_id) : '');
+                                  setIsAssignModalOpen(true);
+                                }}
+                                className="btn-action-icon"
+                                title="تعيين المندوب المسؤول"
+                              >
+                                <UserCheck size={15} />
+                              </button>
+                              <button
+                                onClick={() => openDeleteModal(c)}
+                                className="btn-action-icon"
+                                title="حذف العميل"
+                                style={{ color: '#dc2626' }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -731,18 +772,18 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
 
               <div className="form-row-3">
                 <div className="form-group">
-                  <label className="form-label">نوع التعامل المالي</label>
+                  <label className="form-label">نوع العميل / طبيعة التعامل</label>
                   <select
                     className="sheikh-select"
                     value={newPaymentType}
                     onChange={(e) => setNewPaymentType(e.target.value as PaymentType)}
                   >
-                    <option value="CREDIT">آجل مع فترة سداد (CREDIT)</option>
-                    <option value="CASH">نقدي فقط (CASH)</option>
+                    <option value="CREDIT">آجل — دفع مؤجل مع فترة سماح</option>
+                    <option value="CASH">نقدي — دفع كاش فوري</option>
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">فترة السداد (أيام)</label>
+                  <label className="form-label">فترة السداد المسموحة (أيام)</label>
                   <input
                     type="number"
                     className="sheikh-input"
@@ -1068,19 +1109,19 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
 
               <div className="form-row-3">
                 <div className="form-group">
-                  <label className="form-label">طريقة التعامل المالي</label>
+                  <label className="form-label">نوع العميل / طبيعة التعامل</label>
                   <select
                     className="sheikh-select"
                     value={editPaymentType}
                     onChange={(e) => setEditPaymentType(e.target.value as PaymentType)}
                   >
-                    <option value="CREDIT">آجل (مع مهلة سداد)</option>
-                    <option value="CASH">نقدي (كاش فوري)</option>
+                    <option value="CREDIT">آجل — دفع مؤجل مع فترة سماح</option>
+                    <option value="CASH">نقدي — دفع كاش فوري</option>
                   </select>
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">مهلة السداد (بالأيام)</label>
+                  <label className="form-label">فترة السداد المسموحة (أيام)</label>
                   <input
                     type="number"
                     className="sheikh-input"
@@ -1192,14 +1233,6 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
           </div>
         </div>
       )}
-
-      {/* 2026 Monthly Transactions Excel Sheet Modal */}
-      <MonthlyExcelSheetModal
-        isOpen={isExcelModalOpen}
-        onClose={() => setIsExcelModalOpen(false)}
-        selectedCustomerCode={selectedCustomerForSheet}
-        onViewCustomerDetails={(id) => onNavigate?.(`/customers/${id}`)}
-      />
     </div>
   );
 };

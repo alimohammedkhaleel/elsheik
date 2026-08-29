@@ -33,9 +33,14 @@ export class InteractionController {
         return;
       }
 
+      // Accept both `summary` and `notes` fields from client for backward compatibility
+      const body = req.body;
+      const summary = body.summary || body.notes || '';
+
       const item = await interactionService.createInteraction(
         {
-          ...req.body,
+          ...body,
+          summary,
           customer_id: customerId,
         },
         employeeId,
@@ -48,6 +53,43 @@ export class InteractionController {
     }
   }
 
+  /**
+   * DELETE /api/customers/:id/interactions/:interactionId
+   */
+  async deleteOne(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const customerId = parseInt(req.params.id, 10);
+      const interactionId = parseInt(req.params.interactionId, 10);
+
+      if (isNaN(customerId) || isNaN(interactionId)) {
+        ResponseUtil.error(res, 'معرف غير صالح', 400, 'INVALID_ID');
+        return;
+      }
+
+      await interactionService.deleteInteraction(interactionId, customerId);
+      ResponseUtil.success(res, 'تم حذف الملاحظة بنجاح', null);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/customers/:id/interactions   (bulk delete all)
+   */
+  async deleteAll(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const customerId = parseInt(req.params.id, 10);
+      if (isNaN(customerId)) {
+        ResponseUtil.error(res, 'معرف العميل غير صالح', 400, 'INVALID_CUSTOMER_ID');
+        return;
+      }
+
+      const result = await interactionService.deleteAllByCustomer(customerId);
+      ResponseUtil.success(res, `تم حذف ${result.count} ملاحظة بنجاح`, result);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const interactionController = new InteractionController();

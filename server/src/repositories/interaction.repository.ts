@@ -3,32 +3,8 @@ import { validateDatabaseEnv } from '../config/env';
 import { userRepository } from './user.repository';
 import { CustomerInteraction, CreateInteractionInput } from '../types/interaction.types';
 
-const memoryInteractions: CustomerInteraction[] = [
-  {
-    id: 1,
-    customer_id: 1,
-    employee_id: 2,
-    employee_name: 'علي محمد حسن',
-    interaction_type: 'VISIT',
-    interaction_date: new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0],
-    summary: 'زيارة ميدانية دورية وتفقد رصيد المخزون',
-    notes: 'العميل يطلب شحنة إضافية مطلع الشهر القادم',
-    status: 'COMPLETED',
-    created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-  },
-  {
-    id: 2,
-    customer_id: 1,
-    employee_id: 4,
-    employee_name: 'طارق خالد عبد الرحمن',
-    interaction_type: 'CALL',
-    interaction_date: new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0],
-    summary: 'مكالمة هاتفية لتذكير بموعد استحقاق دفعة الفاتورة',
-    notes: 'أكد العميل تحويل المبلغ عبر الحساب البنكي',
-    status: 'COMPLETED',
-    created_at: new Date(Date.now() - 6 * 86400000).toISOString(),
-  },
-];
+let memoryIdCounter = 3;
+const memoryInteractions: CustomerInteraction[] = [];
 
 export class InteractionRepository {
   async findByCustomer(customerId: number): Promise<CustomerInteraction[]> {
@@ -52,7 +28,9 @@ export class InteractionRepository {
       }
     }
 
-    return memoryInteractions.filter((i) => i.customer_id === customerId);
+    return memoryInteractions
+      .filter((i) => i.customer_id === customerId)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 
   async create(input: CreateInteractionInput, employeeId: number): Promise<CustomerInteraction> {
@@ -87,7 +65,7 @@ export class InteractionRepository {
     }
 
     const newInteraction: CustomerInteraction = {
-      id: memoryInteractions.length + 1,
+      id: memoryIdCounter++,
       customer_id: input.customer_id,
       employee_id: employeeId,
       employee_name: employee?.full_name || 'موظف',
@@ -101,6 +79,51 @@ export class InteractionRepository {
 
     memoryInteractions.unshift(newInteraction);
     return newInteraction;
+  }
+
+  async deleteOne(interactionId: number, customerId: number): Promise<boolean> {
+    const { isConfigured } = validateDatabaseEnv();
+
+    if (isConfigured) {
+      try {
+        const sql = `DELETE FROM customer_interactions WHERE id = $1 AND customer_id = $2;`;
+        await query(sql, [interactionId, customerId]);
+        return true;
+      } catch (err) {
+        // Fallback to memory
+      }
+    }
+
+    const idx = memoryInteractions.findIndex(
+      (i) => i.id === interactionId && i.customer_id === customerId
+    );
+    if (idx !== -1) {
+      memoryInteractions.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+
+  async deleteAllByCustomer(customerId: number): Promise<number> {
+    const { isConfigured } = validateDatabaseEnv();
+
+    if (isConfigured) {
+      try {
+        const sql = `DELETE FROM customer_interactions WHERE customer_id = $1;`;
+        const result = await query(sql, [customerId]);
+        return result.rowCount || 0;
+      } catch (err) {
+        // Fallback to memory
+      }
+    }
+
+    const before = memoryInteractions.length;
+    const toRemove = memoryInteractions.filter((i) => i.customer_id === customerId);
+    toRemove.forEach((item) => {
+      const idx = memoryInteractions.indexOf(item);
+      if (idx !== -1) memoryInteractions.splice(idx, 1);
+    });
+    return before - memoryInteractions.length;
   }
 }
 

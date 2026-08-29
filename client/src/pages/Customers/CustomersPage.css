@@ -238,67 +238,13 @@
   gap: 14px;
 }
 
-/* Executive 2026 Monthly Statement Button Styles */
-.btn-monthly-statement {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  background: linear-gradient(135deg, #fef9c3 0%, #fef08a 100%);
-  border: 1px solid #eab308;
-  color: #854d0e;
-  border-radius: 8px;
-  font-size: 0.78rem;
-  font-weight: 800;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(234, 179, 8, 0.2);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  white-space: nowrap;
-}
-
-.btn-monthly-statement:hover {
-  background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);
-  color: #ffffff;
-  border-color: #ca8a04;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(202, 138, 4, 0.3);
-}
-
-.btn-monthly-statement svg {
-  transition: transform 0.2s ease;
-}
-
-.btn-monthly-statement:hover svg {
-  transform: scale(1.15);
-}
-
-.btn-header-monthly-sheet {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 18px;
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
-  color: #ffffff;
-  border: 1px solid #10b981;
-  border-radius: var(--radius-sm, 8px);
-  font-size: 0.88rem;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25);
-  transition: all 0.2s ease;
-}
-
-.btn-header-monthly-sheet:hover {
-  background: linear-gradient(135deg, #047857 0%, #065f46 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);
-}
-
 @media (max-width: 840px) {
   .filter-grid-row {
     grid-template-columns: 1fr;
   }
-  .form-row-2, .form-row-3 {
+
+  .form-row-2,
+  .form-row-3 {
     grid-template-columns: 1fr;
   }
 }

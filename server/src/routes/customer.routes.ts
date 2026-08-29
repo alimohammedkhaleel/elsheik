@@ -22,6 +22,8 @@ router.patch('/:id/assignment', requireRole('ADMIN', 'MANAGER'), customerControl
 // Customer Interactions (Visits, Calls, Notes, Follow-ups)
 router.get('/:id/interactions', interactionController.getByCustomer);
 router.post('/:id/interactions', requireRole('ADMIN', 'MANAGER', 'EMPLOYEE', 'COLLECTOR'), interactionController.create);
+router.delete('/:id/interactions/:interactionId', requireRole('ADMIN', 'MANAGER', 'EMPLOYEE', 'COLLECTOR'), interactionController.deleteOne);
+router.delete('/:id/interactions', requireRole('ADMIN', 'MANAGER'), interactionController.deleteAll);
 
 export const customerRoutes = router;
 

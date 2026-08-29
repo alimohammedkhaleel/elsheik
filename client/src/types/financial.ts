@@ -62,7 +62,8 @@ export interface CustomerInteraction {
   employee_name?: string;
   interaction_type: InteractionType;
   interaction_date: string;
-  notes: string;
+  summary?: string;
+  notes?: string;
   follow_up_date?: string | null;
   is_resolved?: boolean;
   created_at: string;

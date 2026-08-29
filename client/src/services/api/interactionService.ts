@@ -5,7 +5,8 @@ export interface CreateInteractionInput {
   customer_id: number;
   interaction_type: InteractionType;
   interaction_date?: string;
-  notes: string;
+  summary: string;       // PRIMARY field the server validates
+  notes?: string;        // optional extended notes
   follow_up_date?: string;
   is_resolved?: boolean;
 }
@@ -28,6 +29,24 @@ export class InteractionService {
       throw new Error(response.message || 'فشل تسجيل التفاعل / الزيارة');
     }
     return response.data;
+  }
+
+  async deleteInteraction(customerId: number, interactionId: number): Promise<void> {
+    const response = await apiClient.delete<null>(
+      `/customers/${customerId}/interactions/${interactionId}`
+    );
+    if (!response.success) {
+      throw new Error(response.message || 'فشل حذف الملاحظة');
+    }
+  }
+
+  async deleteAllInteractions(customerId: number): Promise<void> {
+    const response = await apiClient.delete<null>(
+      `/customers/${customerId}/interactions`
+    );
+    if (!response.success) {
+      throw new Error(response.message || 'فشل حذف جميع الملاحظات');
+    }
   }
 }
 
