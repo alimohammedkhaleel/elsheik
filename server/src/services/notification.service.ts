@@ -30,39 +30,82 @@ export class NotificationService {
       }
     }
 
-    // 2. Check for Overdue Invoices
+    // 2. Check for Overdue Invoices — group per customer with direct links
     const invoicesRes = await invoiceRepository.findAll();
     const overdueInvoices = invoicesRes.data.filter((i) => i.payment_status === 'OVERDUE');
     if (overdueInvoices.length > 0) {
-      const totalOverdue = overdueInvoices.reduce((acc, i) => acc + Number(i.total), 0);
-      dynamicNotifications.push({
-        id: idCounter++,
-        title: 'فواتير متأخرة السداد',
-        message: `تم رصد ${overdueInvoices.length} فاتورة متأخرة بإجمالي ${totalOverdue.toLocaleString()} ج.م تتطلب متابعة تحصيل.`,
-        type: 'ALERT',
-        link: '/invoices',
-        is_read: readSet.has(1001),
-        created_at: new Date(Date.now() - 3600000).toISOString(),
+      const overdueByCustomer = overdueInvoices.reduce<Record<number, { name: string; code: string; count: number; total: number }>>((acc, inv) => {
+        const cid = inv.customer_id;
+        if (!acc[cid]) {
+          acc[cid] = {
+            name: (inv as any).customer_name || `عميل #${cid}`,
+            code: (inv as any).customer_code || '',
+            count: 0,
+            total: 0,
+          };
+        }
+        acc[cid].count++;
+        acc[cid].total += Number(inv.total);
+        return acc;
+      }, {});
+
+      Object.entries(overdueByCustomer).forEach(([cidStr, data], idx) => {
+        const cid = parseInt(cidStr, 10);
+        dynamicNotifications.push({
+          id: idCounter++,
+          title: `فواتير متأخرة — ${data.name}`,
+          message: `العميل ${data.name}${data.code ? ` (${data.code})` : ''} لديه ${data.count} فاتورة متأخرة بإجمالي ${data.total.toLocaleString('ar-EG', { minimumFractionDigits: 0 })} ج.م`,
+          type: 'ALERT',
+          link: `/customers/${cid}`,
+          is_read: readSet.has(1001 + idx),
+          created_at: new Date(Date.now() - 3600000).toISOString(),
+        });
       });
     }
 
-    // 3. Customers requiring follow-up (inactive or high balance)
+    // 3. Customers with overdue balance based on payment terms
     const customersRes = await customerRepository.findAll();
-    const highBalanceCusts = customersRes.data.filter((c) => Number(c.current_balance || 0) > Number(c.credit_limit || 0) && Number(c.credit_limit || 0) > 0);
-    if (highBalanceCusts.length > 0) {
+    const overdueCustomers = customersRes.data.filter((c) => {
+      if ((Number(c.current_balance) || 0) <= 0 || !c.last_order_date) return false;
+      const daysSinceOrder = Math.floor((Date.now() - new Date(c.last_order_date).getTime()) / 86400000);
+      return daysSinceOrder > (c.payment_terms_days || 30);
+    });
+
+    overdueCustomers.slice(0, 5).forEach((c, idx) => {
+      const daysSinceOrder = Math.floor((Date.now() - new Date(c.last_order_date!).getTime()) / 86400000);
+      const daysLate = Math.max(0, daysSinceOrder - (c.payment_terms_days || 30));
       dynamicNotifications.push({
         id: idCounter++,
-        title: 'تجاوز الحد الائتماني',
-        message: `يوجد ${highBalanceCusts.length} عميل تجاوزوا سقف الحد الائتماني المسموح به.`,
-        type: 'WARNING',
-        link: '/customers',
-        is_read: readSet.has(1002),
-        created_at: new Date(Date.now() - 7200000).toISOString(),
+        title: `تأخير في السداد — ${c.name}`,
+        message: `العميل ${c.name} (${c.customer_code}) متأخر عن سداد رصيد ${Number(c.current_balance).toLocaleString('ar-EG', { minimumFractionDigits: 0 })} ج.م منذ ${daysLate} يوم.`,
+        type: 'ALERT',
+        link: `/customers/${c.id}`,
+        is_read: readSet.has(1020 + idx),
+        created_at: new Date(Date.now() - 5400000).toISOString(),
+      });
+    });
+
+    // 4. Customers exceeding credit limit — one notification per customer with direct link
+    const highBalanceCusts = customersRes.data.filter(
+      (c) => Number(c.current_balance || 0) > Number(c.credit_limit || 0) && Number(c.credit_limit || 0) > 0
+    );
+    if (highBalanceCusts.length > 0) {
+      const displayCusts = highBalanceCusts.slice(0, 5);
+      displayCusts.forEach((c, idx) => {
+        const excess = Number(c.current_balance || 0) - Number(c.credit_limit || 0);
+        dynamicNotifications.push({
+          id: idCounter++,
+          title: `تجاوز الحد الائتماني — ${c.name}`,
+          message: `العميل ${c.name} (${c.customer_code}) تجاوز حده الائتماني بمقدار ${excess.toLocaleString('ar-EG', { minimumFractionDigits: 0 })} ج.م (الرصيد: ${Number(c.current_balance).toLocaleString('ar-EG')} / الحد: ${Number(c.credit_limit).toLocaleString('ar-EG')})`,
+          type: 'WARNING',
+          link: `/customers/${c.id}`,
+          is_read: readSet.has(1002 + idx),
+          created_at: new Date(Date.now() - 7200000).toISOString(),
+        });
       });
     }
 
-
-    // 4. Combined with stored memory notifications
+    // Combined with stored memory notifications
     const all = [...dynamicNotifications, ...memoryNotifications];
     const unreadCount = all.filter((n) => !n.is_read).length;
 
@@ -81,9 +124,9 @@ export class NotificationService {
   }
 
   async markAllAsRead(): Promise<void> {
-    readSet.add(1000);
-    readSet.add(1001);
-    readSet.add(1002);
+    for (let i = 1000; i < 1100; i++) {
+      readSet.add(i);
+    }
     memoryNotifications.forEach((n) => (n.is_read = true));
   }
 }
