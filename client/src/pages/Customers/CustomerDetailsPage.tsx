@@ -41,6 +41,7 @@ import {
 } from '../../types/financial';
 import { User as SystemUser } from '../../types/auth';
 import './CustomerDetailsPage.css';
+import { exportToExcel } from '../../utils/excelExport';
 
 interface CustomerDetailsPageProps {
   customerId: number;
@@ -697,25 +698,32 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
       showToast('warn', 'لا توجد حركات لتصديرها في الفترة المحددة');
       return;
     }
-    const headers = ['#', 'التاريخ', 'نوع الحركة', 'البيان والتفاصيل', 'مدين (+)', 'دائن (-)', 'الرصيد المتراكم'];
-    const rows = statementData.transactions.map((tx, idx) => [
-      idx + 1,
-      `"${tx.transaction_date}"`,
-      `"${tx.transaction_type}"`,
-      `"${tx.description.replace(/"/g, '""')}"`,
-      tx.debit || 0,
-      tx.credit || 0,
-      tx.running_balance || 0
-    ]);
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `كشف_حساب_${customer?.name || 'عميل'}_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+
+    const rows = statementData.transactions.map((tx, idx) => ({
+      num: idx + 1,
+      date: tx.transaction_date ? String(tx.transaction_date).split('T')[0] : '',
+      type: tx.transaction_type || '',
+      desc: tx.description || '',
+      debit: Number(tx.debit || 0),
+      credit: Number(tx.credit || 0),
+      balance: Number(tx.running_balance || 0),
+    }));
+
+    exportToExcel({
+      fileName: `كشف_حساب_${customer?.name || 'عميل'}_${new Date().toISOString().split('T')[0]}`,
+      sheetName: 'كشف الحساب',
+      title: `كشف حساب العميل: ${customer?.name || ''}${startDate || endDate ? ` — الفترة من ${startDate || 'البداية'} إلى ${endDate || 'اليوم'}` : ''}`,
+      columns: [
+        { header: '#',                      key: 'num',     minWidth: 5  },
+        { header: 'التاريخ',               key: 'date',    minWidth: 14 },
+        { header: 'نوع الحركة',            key: 'type',    minWidth: 18 },
+        { header: 'البيان والتفاصيل',      key: 'desc',    minWidth: 35 },
+        { header: 'مدين (+)',              key: 'debit',   minWidth: 14 },
+        { header: 'دائن (-)',              key: 'credit',  minWidth: 14 },
+        { header: 'الرصيد المتراكم',       key: 'balance', minWidth: 16 },
+      ],
+      data: rows,
+    });
   };
 
   const formatCurrency = (val: number) => {

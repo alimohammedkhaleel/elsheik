@@ -23,6 +23,7 @@ import { invoiceService } from '../../services/api/invoiceService';
 import { MonthlyExcelSheetModal } from '../../components/customers/MonthlyExcelSheetModal';
 import { Customer, CustomerClassification, PaymentType } from '../../types/financial';
 import { User } from '../../types/auth';
+import { exportToExcel } from '../../utils/excelExport';
 import './CustomersPage.css';
 
 interface CustomersPageProps {
@@ -386,45 +387,41 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigate }) => {
   };
 
   const handleExportCustomersCSV = () => {
-    const headers = [
-      'كود العميل',
-      'اسم العميل',
-      'الاسم التجاري',
-      'الهاتف',
-      'المدينة',
-      'العنوان',
-      'طبيعة التعامل',
-      'فترة السداد (أيام)',
-      'التصنيف',
-      'الحد الائتماني',
-      'الرصيد القائم',
-      'المندوب المسؤول'
-    ];
+    const rows = customers.map((c) => ({
+      code: c.customer_code,
+      name: c.name,
+      tradeName: c.trade_name || '',
+      phone: c.phone || '',
+      city: c.city || '',
+      address: c.address || '',
+      paymentType: c.payment_type === 'CREDIT' ? 'آجل' : 'نقدي',
+      paymentTerms: c.payment_terms_days || 0,
+      classification: `فئة ${c.classification}`,
+      creditLimit: c.credit_limit || 0,
+      balance: c.current_balance || 0,
+      rep: c.assigned_employee_name || '',
+    }));
 
-    const rows = customers.map((c) => [
-      `"${c.customer_code}"`,
-      `"${c.name.replace(/"/g, '""')}"`,
-      `"${(c.trade_name || '').replace(/"/g, '""')}"`,
-      `"${c.phone || ''}"`,
-      `"${c.city || ''}"`,
-      `"${c.address || ''}"`,
-      `"${c.payment_type === 'CREDIT' ? 'آجل' : 'نقدي'}"`,
-      c.payment_terms_days || 0,
-      `"فئة ${c.classification}"`,
-      (c.credit_limit || 0).toFixed(2),
-      (c.current_balance || 0).toFixed(2),
-      `"${c.assigned_employee_name || ''}"`
-    ]);
-
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `قائمة_العملاء_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    exportToExcel({
+      fileName: `سجل_العملاء_${new Date().toISOString().split('T')[0]}`,
+      sheetName: 'سجل العملاء',
+      title: 'سجل عملاء وموزعي مؤسسة الشيخ للتجارة والتوزيع',
+      columns: [
+        { header: 'كود العميل',            key: 'code',           minWidth: 12 },
+        { header: 'اسم العميل',            key: 'name',           minWidth: 28 },
+        { header: 'الاسم التجاري',         key: 'tradeName',      minWidth: 24 },
+        { header: 'الهاتف',                key: 'phone',          minWidth: 16 },
+        { header: 'المدينة / المنطقة',     key: 'city',           minWidth: 16 },
+        { header: 'العنوان بالتفصيل',      key: 'address',        minWidth: 32 },
+        { header: 'طبيعة التعامل',        key: 'paymentType',    minWidth: 14 },
+        { header: 'فترة السداد (أيام)',   key: 'paymentTerms',   minWidth: 16 },
+        { header: 'التصنيف',              key: 'classification', minWidth: 12 },
+        { header: 'الحد الائتماني (ج.م)', key: 'creditLimit',    minWidth: 18 },
+        { header: 'الرصيد القائم (ج.م)',   key: 'balance',        minWidth: 18 },
+        { header: 'المندوب المسؤول',    key: 'rep',            minWidth: 20 },
+      ],
+      data: rows,
+    });
   };
 
   return (

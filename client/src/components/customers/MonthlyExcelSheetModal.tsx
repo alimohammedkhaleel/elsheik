@@ -12,6 +12,7 @@ import {
   MONTH_NAMES_AR,
 } from '../../constants/monthlyData';
 import { Invoice } from '../../types/financial';
+import { exportToExcel } from '../../utils/excelExport';
 import './MonthlyExcelSheetModal.css';
 
 interface MonthlyExcelSheetModalProps {
@@ -89,44 +90,45 @@ export const MonthlyExcelSheetModal: React.FC<MonthlyExcelSheetModalProps> = ({
     return filteredCustomers.reduce((acc, c) => acc + (c.balance || 0), 0);
   }, [filteredCustomers]);
 
-  // Export CSV with UTF-8 BOM for Excel
+  // Export .xlsx with proper column widths
   const handleExportCSV = () => {
-    const headers = [
-      'كود العميل',
-      'اسم المنشأة والعميل',
-      'الرصيد القائم (ج.م)',
-      ...MONTH_NAMES_AR,
-      'إجمالي السنة 2026 (ج.م)',
-      'المدينة',
-      'المندوب المسؤول'
-    ];
+    const monthCols = MONTH_NAMES_AR.map((name, i) => ({
+      header: name,
+      key: MONTH_KEYS[i],
+      minWidth: 14,
+    }));
 
     const rows = filteredCustomers.map((c) => {
       const annualSum = MONTH_KEYS.reduce((sum, k) => sum + (c.months[k] || 0), 0);
-      return [
-        `"${c.code}"`,
-        `"${c.name.replace(/"/g, '""')}"`,
-        c.balance.toFixed(2),
-        ...MONTH_KEYS.map((k) => (c.months[k] || 0).toFixed(2)),
-        annualSum.toFixed(2),
-        `"${c.city || ''}"`,
-        `"${c.assigned_employee_name || ''}"`
-      ];
+      const row: Record<string, unknown> = {
+        code: c.code,
+        name: c.name,
+        balance: c.balance,
+        annual: annualSum,
+        city: c.city || '',
+        rep: c.assigned_employee_name || '',
+      };
+      MONTH_KEYS.forEach((k) => {
+        row[k] = c.months[k] || 0;
+      });
+      return row;
     });
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((r) => r.join(','))
-    ].join('\r\n');
-
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `كشف_مسحوبات_العملاء_2026_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    exportToExcel({
+      fileName: `كشف_مسحوبات_العملاء_2026_${new Date().toISOString().split('T')[0]}`,
+      sheetName: 'مسحوبات 2026',
+      title: 'كشف حسابات مسحوبات العملاء الشهرية لعام 2026',
+      columns: [
+        { header: 'كود العميل',            key: 'code',    minWidth: 12 },
+        { header: 'اسم المنشأة والعميل',  key: 'name',    minWidth: 30 },
+        { header: 'الرصيد القائم (ج.م)',    key: 'balance', minWidth: 18 },
+        ...monthCols,
+        { header: 'إجمالي السنة 2026 (ج.م)', key: 'annual',  minWidth: 22 },
+        { header: 'المدينة',                key: 'city',    minWidth: 14 },
+        { header: 'المندوب المسؤول',    key: 'rep',     minWidth: 20 },
+      ],
+      data: rows,
+    });
   };
 
   const formatMoney = (val: number) => {
