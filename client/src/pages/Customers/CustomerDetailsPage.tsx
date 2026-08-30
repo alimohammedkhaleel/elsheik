@@ -22,6 +22,7 @@ import {
   StickyNote,
   X,
   Download,
+  Edit2,
 } from 'lucide-react';
 import { customerService } from '../../services/api/customerService';
 import { statementService } from '../../services/api/statementService';
@@ -120,9 +121,20 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   const [isInteractionsLoading, setIsInteractionsLoading] = useState(false);
   const [isInteractionModalOpen, setIsInteractionModalOpen] = useState(false);
   const [newInteractionType, setNewInteractionType] = useState<InteractionType>('VISIT');
+  const [newInteractionDate, setNewInteractionDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [newInteractionSummary, setNewInteractionSummary] = useState('');
   const [newFollowUpDate, setNewFollowUpDate] = useState('');
   const [isAddingInteraction, setIsAddingInteraction] = useState(false);
+  const [isDeletingInteraction, setIsDeletingInteraction] = useState<number | null>(null);
+
+  // Edit Interaction Modal State
+  const [editingInteraction, setEditingInteraction] = useState<CustomerInteraction | null>(null);
+  const [isEditInteractionModalOpen, setIsEditInteractionModalOpen] = useState(false);
+  const [editInteractionType, setEditInteractionType] = useState<InteractionType>('VISIT');
+  const [editInteractionDate, setEditInteractionDate] = useState('');
+  const [editInteractionSummary, setEditInteractionSummary] = useState('');
+  const [editFollowUpDate, setEditFollowUpDate] = useState('');
+  const [isUpdatingInteraction, setIsUpdatingInteraction] = useState(false);
 
   // Follow-up Notes State (notes tab) — rep name + phone + date + payment method
   const [newNoteText, setNewNoteText] = useState('');
@@ -134,6 +146,16 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   const [isDeletingNote, setIsDeletingNote] = useState<number | null>(null);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+
+  // Edit Sales Rep Note Modal State
+  const [editingNote, setEditingNote] = useState<CustomerInteraction | null>(null);
+  const [isEditNoteModalOpen, setIsEditNoteModalOpen] = useState(false);
+  const [editNoteRepName, setEditNoteRepName] = useState('');
+  const [editNoteRepPhone, setEditNoteRepPhone] = useState('');
+  const [editNoteDate, setEditNoteDate] = useState('');
+  const [editNotePaymentMethod, setEditNotePaymentMethod] = useState('');
+  const [editNoteText, setEditNoteText] = useState('');
+  const [isUpdatingNote, setIsUpdatingNote] = useState(false);
 
   // Balance Reset State
   const [isResettingBalance, setIsResettingBalance] = useState(false);
@@ -148,6 +170,15 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   const [csNoteText, setCsNoteText] = useState('');
   const [isAddingCsNote, setIsAddingCsNote] = useState(false);
   const [isDeletingCsNote, setIsDeletingCsNote] = useState<number | null>(null);
+
+  // Edit CS Note Modal State
+  const [editingCsNote, setEditingCsNote] = useState<CustomerInteraction | null>(null);
+  const [isEditCsNoteModalOpen, setIsEditCsNoteModalOpen] = useState(false);
+  const [editCsAgentName, setEditCsAgentName] = useState('');
+  const [editCsAgentPhone, setEditCsAgentPhone] = useState('');
+  const [editCsNoteDate, setEditCsNoteDate] = useState('');
+  const [editCsNoteText, setEditCsNoteText] = useState('');
+  const [isUpdatingCsNote, setIsUpdatingCsNote] = useState(false);
 
   // Assignment Modal State
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -375,18 +406,147 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
       await interactionService.createInteraction({
         customer_id: customerId,
         interaction_type: newInteractionType,
+        interaction_date: newInteractionDate || new Date().toISOString().split('T')[0],
         summary: newInteractionSummary,
         follow_up_date: newFollowUpDate || undefined,
       });
       setNewInteractionSummary('');
       setNewFollowUpDate('');
+      setNewInteractionDate(new Date().toISOString().split('T')[0]);
       setIsInteractionModalOpen(false);
       fetchInteractions();
-      showToast('success', 'تم تسجيل التفاعل بنجاح');
+      showToast('success', 'تم تسجيل الزيارة / المتابعة بنجاح');
     } catch (err) {
       showToast('error', 'فشل تسجيل التفاعل');
     } finally {
       setIsAddingInteraction(false);
+    }
+  };
+
+  const openEditInteraction = (it: CustomerInteraction) => {
+    setEditingInteraction(it);
+    setEditInteractionType(it.interaction_type || 'VISIT');
+    setEditInteractionDate(it.interaction_date ? String(it.interaction_date).split('T')[0] : '');
+    setEditInteractionSummary(it.summary || it.notes || '');
+    setEditFollowUpDate(it.follow_up_date ? String(it.follow_up_date).split('T')[0] : '');
+    setIsEditInteractionModalOpen(true);
+  };
+
+  const handleUpdateInteractionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingInteraction || !editInteractionSummary.trim()) return;
+    try {
+      setIsUpdatingInteraction(true);
+      await interactionService.updateInteraction(customerId, editingInteraction.id, {
+        interaction_type: editInteractionType,
+        interaction_date: editInteractionDate || undefined,
+        summary: editInteractionSummary,
+        follow_up_date: editFollowUpDate || undefined,
+      });
+      setIsEditInteractionModalOpen(false);
+      setEditingInteraction(null);
+      fetchInteractions();
+      showToast('success', 'تم تعديل الزيارة / المتابعة بنجاح');
+    } catch {
+      showToast('error', 'فشل تعديل الزيارة');
+    } finally {
+      setIsUpdatingInteraction(false);
+    }
+  };
+
+  const handleDeleteInteraction = async (interactionId: number) => {
+    try {
+      setIsDeletingInteraction(interactionId);
+      await interactionService.deleteInteraction(customerId, interactionId);
+      setInteractions((prev) => prev.filter((i) => i.id !== interactionId));
+      showToast('success', 'تم حذف الزيارة / المتابعة بنجاح');
+    } catch {
+      showToast('error', 'فشل حذف الزيارة');
+    } finally {
+      setIsDeletingInteraction(null);
+    }
+  };
+
+  const openEditNote = (note: CustomerInteraction) => {
+    setEditingNote(note);
+    const parsed = parseCorporateNote(note.summary || note.notes || '');
+    const repNameMeta = parsed.meta.find((m) => m.label.includes('اسم المندوب'));
+    const repPhoneMeta = parsed.meta.find((m) => m.label.includes('رقم المندوب') || m.label.includes('الهاتف'));
+    const dateMeta = parsed.meta.find((m) => m.label.includes('تاريخ السداد') || m.label.includes('التاريخ'));
+    const methodMeta = parsed.meta.find((m) => m.label.includes('طريقة السداد') || m.label.includes('طريقة الدفع') || m.label.includes('نوع العميل'));
+
+    setEditNoteRepName(repNameMeta?.value || '');
+    setEditNoteRepPhone(repPhoneMeta?.value || '');
+    setEditNoteDate(dateMeta?.value || '');
+    setEditNotePaymentMethod(methodMeta?.value || '');
+    setEditNoteText(parsed.text || '');
+    setIsEditNoteModalOpen(true);
+  };
+
+  const handleUpdateNoteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingNote || !editNoteText.trim()) return;
+    const parts: string[] = [];
+    if (editNoteRepName) parts.push(`[اسم المندوب: ${editNoteRepName}]`);
+    if (editNoteRepPhone) parts.push(`[رقم المندوب: ${editNoteRepPhone}]`);
+    if (editNoteDate) parts.push(`[تاريخ السداد: ${editNoteDate}]`);
+    if (editNotePaymentMethod) parts.push(`[طريقة السداد: ${editNotePaymentMethod}]`);
+    parts.push(editNoteText.trim());
+    const richSummary = parts.join(' — ');
+
+    try {
+      setIsUpdatingNote(true);
+      await interactionService.updateInteraction(customerId, editingNote.id, {
+        summary: richSummary,
+      });
+      setIsEditNoteModalOpen(false);
+      setEditingNote(null);
+      fetchInteractions();
+      showToast('success', 'تم تعديل ملاحظة المندوب بنجاح');
+    } catch {
+      showToast('error', 'فشل تعديل الملاحظة');
+    } finally {
+      setIsUpdatingNote(false);
+    }
+  };
+
+  const openEditCsNote = (note: CustomerInteraction) => {
+    setEditingCsNote(note);
+    const parsed = parseCorporateNote(note.summary || note.notes || '');
+    const agentMeta = parsed.meta.find((m) => m.label.includes('اسم موظف خدمة العملاء') || m.label.includes('اسم الموظف'));
+    const phoneMeta = parsed.meta.find((m) => m.label.includes('رقم الهاتف') || m.label.includes('الهاتف'));
+    const dateMeta = parsed.meta.find((m) => m.label.includes('التاريخ'));
+
+    setEditCsAgentName(agentMeta?.value || '');
+    setEditCsAgentPhone(phoneMeta?.value || '');
+    setEditCsNoteDate(dateMeta?.value || '');
+    setEditCsNoteText(parsed.text || '');
+    setIsEditCsNoteModalOpen(true);
+  };
+
+  const handleUpdateCsNoteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCsNote || !editCsNoteText.trim()) return;
+    const parts: string[] = [];
+    if (editCsAgentName) parts.push(`[اسم موظف خدمة العملاء: ${editCsAgentName}]`);
+    if (editCsAgentPhone) parts.push(`[رقم الهاتف: ${editCsAgentPhone}]`);
+    if (editCsNoteDate) parts.push(`[التاريخ: ${editCsNoteDate}]`);
+    parts.push(editCsNoteText.trim());
+    const richSummary = parts.join(' — ');
+
+    try {
+      setIsUpdatingCsNote(true);
+      await interactionService.updateInteraction(customerId, editingCsNote.id, {
+        summary: richSummary,
+      });
+      setIsEditCsNoteModalOpen(false);
+      setEditingCsNote(null);
+      fetchInteractions();
+      showToast('success', 'تم تعديل ملاحظة خدمة العملاء بنجاح');
+    } catch {
+      showToast('error', 'فشل تعديل الملاحظة');
+    } finally {
+      setIsUpdatingCsNote(false);
     }
   };
 
@@ -1215,6 +1375,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                       <th>الملخص والبيان</th>
                       <th>تاريخ المتابعة القادمة</th>
                       <th>الحالة</th>
+                      <th>الإجراءات</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1235,17 +1396,40 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                         <td className="font-semibold">{it.employee_name || 'موظف النظام'}</td>
                         <td>{it.summary || it.notes}</td>
                         <td>
-                          {(it as any).follow_up_date ? (
+                          {it.follow_up_date ? (
                             <span className="follow-up-date-badge">
                               <Calendar size={12} />
-                              {formatDate((it as any).follow_up_date)}
+                              {formatDate(it.follow_up_date)}
                             </span>
                           ) : '—'}
                         </td>
                         <td>
-                          <span className={`status-pill ${(it as any).is_resolved ? 'status-ok' : 'status-muted'}`}>
-                            {(it as any).is_resolved ? 'مكتملة' : 'قيد المتابعة'}
+                          <span className={`status-pill ${it.is_resolved ? 'status-ok' : 'status-muted'}`}>
+                            {it.is_resolved ? 'مكتملة' : 'قيد المتابعة'}
                           </span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            <button
+                              onClick={() => openEditInteraction(it)}
+                              className="btn-secondary"
+                              style={{ padding: '4px 8px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              title="تعديل هذه الزيارة"
+                            >
+                              <Edit2 size={12} />
+                              <span>تعديل</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteInteraction(it.id)}
+                              className="btn-danger-small"
+                              style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                              disabled={isDeletingInteraction === it.id}
+                              title="حذف هذه الزيارة"
+                            >
+                              <Trash size={12} />
+                              <span>{isDeletingInteraction === it.id ? '...' : 'حذف'}</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1368,14 +1552,23 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                           </div>
                         ))}
                       </div>
-                      <button
-                        onClick={() => handleDeleteNote(note.id)}
-                        className="corporate-note-delete-btn"
-                        disabled={isDeletingNote === note.id}
-                        title="حذف هذه الملاحظة"
-                      >
-                        {isDeletingNote === note.id ? '...' : <Trash size={15} />}
-                      </button>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <button
+                          onClick={() => openEditNote(note)}
+                          className="corporate-note-edit-btn"
+                          title="تعديل هذه الملاحظة"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteNote(note.id)}
+                          className="corporate-note-delete-btn"
+                          disabled={isDeletingNote === note.id}
+                          title="حذف هذه الملاحظة"
+                        >
+                          {isDeletingNote === note.id ? '...' : <Trash size={14} />}
+                        </button>
+                      </div>
                     </div>
 
                     <div className="corporate-note-body">
@@ -1485,14 +1678,23 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                           </div>
                         ))}
                       </div>
-                      <button
-                        onClick={() => handleDeleteCsNote(note.id)}
-                        className="corporate-note-delete-btn"
-                        disabled={isDeletingCsNote === note.id}
-                        title="حذف هذه الملاحظة"
-                      >
-                        {isDeletingCsNote === note.id ? '...' : <Trash size={15} />}
-                      </button>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <button
+                          onClick={() => openEditCsNote(note)}
+                          className="corporate-note-edit-btn"
+                          title="تعديل هذه الملاحظة"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCsNote(note.id)}
+                          className="corporate-note-delete-btn"
+                          disabled={isDeletingCsNote === note.id}
+                          title="حذف هذه الملاحظة"
+                        >
+                          {isDeletingCsNote === note.id ? '...' : <Trash size={14} />}
+                        </button>
+                      </div>
                     </div>
 
                     <div className="corporate-note-body">
@@ -1730,8 +1932,21 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                   <option value="VISIT">زيارة ميدانية</option>
                   <option value="CALL">مكالمة هاتفية</option>
                   <option value="FOLLOW_UP">متابعة تحصيل</option>
-                  <option value="NOTE">ملاحظة إدارية</option>
                 </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  <Calendar size={14} style={{ marginLeft: '4px' }} />
+                  تاريخ الزيارة / التفاعل <span className="req-star">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={newInteractionDate}
+                  onChange={(e) => setNewInteractionDate(e.target.value)}
+                  className="sheikh-input"
+                  required
+                />
               </div>
 
               <div className="form-group">
@@ -1769,6 +1984,238 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                   {isAddingInteraction ? 'جاري الحفظ...' : 'تسجيل التفاعل'}
                 </button>
                 <button type="button" className="btn-secondary" onClick={() => setIsInteractionModalOpen(false)}>
+                  إلغاء
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Interaction/Visit */}
+      {isEditInteractionModalOpen && editingInteraction && (
+        <div className="modal-overlay" onClick={() => setIsEditInteractionModalOpen(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">تعديل الزيارة / المتابعة</h3>
+              <button onClick={() => setIsEditInteractionModalOpen(false)} className="modal-close-btn">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateInteractionSubmit} className="modal-form-grid">
+              <div className="form-group">
+                <label className="form-label">نوع التفاعل <span className="req-star">*</span></label>
+                <select
+                  value={editInteractionType}
+                  onChange={(e: any) => setEditInteractionType(e.target.value)}
+                  className="sheikh-select"
+                >
+                  <option value="VISIT">زيارة ميدانية</option>
+                  <option value="CALL">مكالمة هاتفية</option>
+                  <option value="FOLLOW_UP">متابعة تحصيل</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  <Calendar size={14} style={{ marginLeft: '4px' }} />
+                  تاريخ الزيارة / التفاعل <span className="req-star">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={editInteractionDate}
+                  onChange={(e) => setEditInteractionDate(e.target.value)}
+                  className="sheikh-input"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">ملخص الزيارة / التفاعل <span className="req-star">*</span></label>
+                <textarea
+                  value={editInteractionSummary}
+                  onChange={(e) => setEditInteractionSummary(e.target.value)}
+                  className="sheikh-textarea"
+                  rows={3}
+                  placeholder="تفاصيل المقابلة، الطلبات، أو ملاحظات التحصيل..."
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  <Calendar size={14} style={{ marginLeft: '4px' }} />
+                  تاريخ المتابعة القادمة (اختياري)
+                </label>
+                <input
+                  type="date"
+                  value={editFollowUpDate}
+                  onChange={(e) => setEditFollowUpDate(e.target.value)}
+                  className="sheikh-input"
+                />
+              </div>
+
+              <div className="modal-footer">
+                <button type="submit" className="btn-gold" disabled={isUpdatingInteraction}>
+                  {isUpdatingInteraction ? 'جاري الحفظ...' : 'حفظ التعديلات'}
+                </button>
+                <button type="button" className="btn-secondary" onClick={() => setIsEditInteractionModalOpen(false)}>
+                  إلغاء
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Sales Rep Note */}
+      {isEditNoteModalOpen && editingNote && (
+        <div className="modal-overlay" onClick={() => setIsEditNoteModalOpen(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">تعديل ملاحظة المندوب</h3>
+              <button onClick={() => setIsEditNoteModalOpen(false)} className="modal-close-btn">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateNoteSubmit} className="modal-form-grid">
+              <div className="form-group">
+                <label className="form-label">اسم المندوب</label>
+                <input
+                  type="text"
+                  className="sheikh-input"
+                  placeholder="اسم المندوب"
+                  value={editNoteRepName}
+                  onChange={(e) => setEditNoteRepName(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">رقم المندوب</label>
+                <input
+                  type="text"
+                  className="sheikh-input"
+                  placeholder="01xxxxxxxxx"
+                  value={editNoteRepPhone}
+                  onChange={(e) => setEditNoteRepPhone(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">تاريخ السداد</label>
+                <input
+                  type="date"
+                  className="sheikh-input"
+                  value={editNoteDate}
+                  onChange={(e) => setEditNoteDate(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">طريقة السداد</label>
+                <select
+                  className="sheikh-select"
+                  value={editNotePaymentMethod}
+                  onChange={(e) => setEditNotePaymentMethod(e.target.value)}
+                >
+                  <option value="">— اختر طريقة السداد —</option>
+                  <option value="آجل">آجل (مديونية)</option>
+                  <option value="نقدي">نقدي</option>
+                  <option value="إنستاباي">إنستاباي</option>
+                  <option value="فودافون كاش">فودافون كاش</option>
+                  <option value="تحويل بنكي">تحويل بنكي</option>
+                  <option value="شيك">شيك</option>
+                </select>
+              </div>
+
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label">نص الملاحظة <span className="req-star">*</span></label>
+                <textarea
+                  className="sheikh-textarea"
+                  placeholder="اكتب ملاحظة المندوب هنا..."
+                  value={editNoteText}
+                  onChange={(e) => setEditNoteText(e.target.value)}
+                  rows={3}
+                  required
+                />
+              </div>
+
+              <div className="modal-footer" style={{ gridColumn: '1 / -1' }}>
+                <button type="submit" className="btn-gold" disabled={isUpdatingNote || !editNoteText.trim()}>
+                  {isUpdatingNote ? 'جاري الحفظ...' : 'حفظ التعديل'}
+                </button>
+                <button type="button" className="btn-secondary" onClick={() => setIsEditNoteModalOpen(false)}>
+                  إلغاء
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Customer Service Note */}
+      {isEditCsNoteModalOpen && editingCsNote && (
+        <div className="modal-overlay" onClick={() => setIsEditCsNoteModalOpen(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">تعديل ملاحظة خدمة العملاء</h3>
+              <button onClick={() => setIsEditCsNoteModalOpen(false)} className="modal-close-btn">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateCsNoteSubmit} className="modal-form-grid">
+              <div className="form-group">
+                <label className="form-label">اسم موظف خدمة العملاء</label>
+                <input
+                  type="text"
+                  className="sheikh-input"
+                  placeholder="اسم الموظف المسؤول"
+                  value={editCsAgentName}
+                  onChange={(e) => setEditCsAgentName(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">رقم الهاتف</label>
+                <input
+                  type="text"
+                  className="sheikh-input"
+                  placeholder="01xxxxxxxxx"
+                  value={editCsAgentPhone}
+                  onChange={(e) => setEditCsAgentPhone(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">التاريخ</label>
+                <input
+                  type="date"
+                  className="sheikh-input"
+                  value={editCsNoteDate}
+                  onChange={(e) => setEditCsNoteDate(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label">نص الملاحظة <span className="req-star">*</span></label>
+                <textarea
+                  className="sheikh-textarea"
+                  placeholder="اكتب ملاحظة خدمة العملاء..."
+                  value={editCsNoteText}
+                  onChange={(e) => setEditCsNoteText(e.target.value)}
+                  rows={3}
+                  required
+                />
+              </div>
+
+              <div className="modal-footer" style={{ gridColumn: '1 / -1' }}>
+                <button type="submit" className="btn-gold" disabled={isUpdatingCsNote || !editCsNoteText.trim()}>
+                  {isUpdatingCsNote ? 'جاري الحفظ...' : 'حفظ التعديل'}
+                </button>
+                <button type="button" className="btn-secondary" onClick={() => setIsEditCsNoteModalOpen(false)}>
                   إلغاء
                 </button>
               </div>

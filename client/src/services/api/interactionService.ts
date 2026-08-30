@@ -31,6 +31,21 @@ export class InteractionService {
     return response.data;
   }
 
+  async updateInteraction(
+    customerId: number,
+    interactionId: number,
+    input: Partial<CreateInteractionInput>
+  ): Promise<CustomerInteraction> {
+    const response = await apiClient.put<CustomerInteraction>(
+      `/customers/${customerId}/interactions/${interactionId}`,
+      input
+    );
+    if (!response.success || !response.data) {
+      throw new Error(response.message || 'فشل تعديل الملاحظة / الزيارة');
+    }
+    return response.data;
+  }
+
   async deleteInteraction(customerId: number, interactionId: number): Promise<void> {
     const response = await apiClient.delete<null>(
       `/customers/${customerId}/interactions/${interactionId}`

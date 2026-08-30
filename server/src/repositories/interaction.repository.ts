@@ -41,8 +41,8 @@ export class InteractionRepository {
       try {
         const sql = `
           INSERT INTO customer_interactions (
-            customer_id, employee_id, interaction_type, interaction_date, summary, notes, status
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            customer_id, employee_id, interaction_type, interaction_date, summary, notes, status, follow_up_date
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
           RETURNING *;
         `;
         const params = [
@@ -53,6 +53,7 @@ export class InteractionRepository {
           input.summary.trim(),
           input.notes?.trim() || null,
           input.status || 'COMPLETED',
+          input.follow_up_date || null,
         ];
         const result = await query<CustomerInteraction>(sql, params);
         return {
@@ -73,12 +74,88 @@ export class InteractionRepository {
       interaction_date: input.interaction_date || new Date().toISOString().split('T')[0],
       summary: input.summary.trim(),
       notes: input.notes?.trim() || null,
+      follow_up_date: input.follow_up_date || null,
       status: input.status || 'COMPLETED',
       created_at: new Date().toISOString(),
     };
 
     memoryInteractions.unshift(newInteraction);
     return newInteraction;
+  }
+
+  async updateOne(
+    interactionId: number,
+    customerId: number,
+    input: Partial<CreateInteractionInput>
+  ): Promise<CustomerInteraction | null> {
+    const { isConfigured } = validateDatabaseEnv();
+
+    if (isConfigured) {
+      try {
+        const fields: string[] = [];
+        const params: unknown[] = [interactionId, customerId];
+        let pIdx = 3;
+
+        if (input.interaction_type !== undefined) {
+          fields.push(`interaction_type = $${pIdx++}`);
+          params.push(input.interaction_type);
+        }
+        if (input.interaction_date !== undefined) {
+          fields.push(`interaction_date = $${pIdx++}`);
+          params.push(input.interaction_date);
+        }
+        if (input.summary !== undefined) {
+          fields.push(`summary = $${pIdx++}`);
+          params.push(input.summary.trim());
+        }
+        if (input.notes !== undefined) {
+          fields.push(`notes = $${pIdx++}`);
+          params.push(input.notes?.trim() || null);
+        }
+        if (input.status !== undefined) {
+          fields.push(`status = $${pIdx++}`);
+          params.push(input.status);
+        }
+        if (input.follow_up_date !== undefined) {
+          fields.push(`follow_up_date = $${pIdx++}`);
+          params.push(input.follow_up_date || null);
+        }
+
+        if (fields.length > 0) {
+          const sql = `
+            UPDATE customer_interactions
+            SET ${fields.join(', ')}
+            WHERE id = $1 AND customer_id = $2
+            RETURNING *;
+          `;
+          const result = await query<CustomerInteraction>(sql, params);
+          if (result.rows.length > 0) {
+            const employee = await userRepository.findById(result.rows[0].employee_id);
+            return {
+              ...result.rows[0],
+              employee_name: employee?.full_name,
+            };
+          }
+        }
+      } catch (err) {
+        // Fallback to memory
+      }
+    }
+
+    const idx = memoryInteractions.findIndex(
+      (i) => i.id === interactionId && i.customer_id === customerId
+    );
+    if (idx !== -1) {
+      if (input.interaction_type !== undefined) memoryInteractions[idx].interaction_type = input.interaction_type;
+      if (input.interaction_date !== undefined) memoryInteractions[idx].interaction_date = input.interaction_date;
+      if (input.summary !== undefined) memoryInteractions[idx].summary = input.summary.trim();
+      if (input.notes !== undefined) memoryInteractions[idx].notes = input.notes?.trim() || null;
+      if (input.status !== undefined) memoryInteractions[idx].status = input.status;
+      if (input.follow_up_date !== undefined) memoryInteractions[idx].follow_up_date = input.follow_up_date || null;
+      return memoryInteractions[idx];
+    }
+
+    return null;
   }
 
   async deleteOne(interactionId: number, customerId: number): Promise<boolean> {

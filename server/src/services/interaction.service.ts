@@ -46,6 +46,18 @@ export class InteractionService {
     return item;
   }
 
+  async updateInteraction(
+    interactionId: number,
+    customerId: number,
+    input: Partial<CreateInteractionInput>
+  ): Promise<CustomerInteraction> {
+    const updated = await interactionRepository.updateOne(interactionId, customerId, input);
+    if (!updated) {
+      throw new AppError('الملاحظة / الزيارة غير موجودة', 404, 'NOT_FOUND');
+    }
+    return updated;
+  }
+
   async deleteInteraction(interactionId: number, customerId: number): Promise<void> {
     const deleted = await interactionRepository.deleteOne(interactionId, customerId);
     if (!deleted) {

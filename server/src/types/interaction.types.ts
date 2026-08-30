@@ -1,4 +1,4 @@
-export type InteractionType = 'VISIT' | 'CALL' | 'NOTE' | 'FOLLOW_UP';
+export type InteractionType = 'VISIT' | 'CALL' | 'NOTE' | 'FOLLOW_UP' | 'CUSTOMER_SERVICE';
 
 export interface CustomerInteraction {
   id: number;
@@ -9,6 +9,7 @@ export interface CustomerInteraction {
   interaction_date: string;
   summary: string;
   notes?: string | null;
+  follow_up_date?: string | null;
   status: string;
   created_at: string;
 }
@@ -19,5 +20,6 @@ export interface CreateInteractionInput {
   summary: string;
   interaction_date?: string;
   notes?: string;
+  follow_up_date?: string | null;
   status?: string;
 }

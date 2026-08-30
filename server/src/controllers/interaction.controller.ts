@@ -54,6 +54,37 @@ export class InteractionController {
   }
 
   /**
+   * PUT /api/customers/:id/interactions/:interactionId
+   */
+  async updateOne(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const customerId = parseInt(req.params.id, 10);
+      const interactionId = parseInt(req.params.interactionId, 10);
+
+      if (isNaN(customerId) || isNaN(interactionId)) {
+        ResponseUtil.error(res, 'معرف غير صالح', 400, 'INVALID_ID');
+        return;
+      }
+
+      const body = req.body;
+      const summary = body.summary !== undefined ? (body.summary || body.notes || '') : undefined;
+
+      const updated = await interactionService.updateInteraction(
+        interactionId,
+        customerId,
+        {
+          ...body,
+          ...(summary !== undefined ? { summary } : {}),
+        }
+      );
+
+      ResponseUtil.success(res, 'تم تعديل السجل بنجاح', updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * DELETE /api/customers/:id/interactions/:interactionId
    */
   async deleteOne(req: Request, res: Response, next: NextFunction): Promise<void> {
