@@ -56,6 +56,40 @@ const ARABIC_MONTHS = [
   'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
 ];
 
+/**
+ * Parses embedded bracketed metadata like [اسم المندوب: علي] — [رقم الهاتف: 0100] — text
+ * into clean structured key-value items and plain note text.
+ */
+const parseCorporateNote = (rawText: string) => {
+  if (!rawText) return { meta: [] as { label: string; value: string }[], text: '' };
+  const parts = rawText.split(' — ');
+  const meta: { label: string; value: string }[] = [];
+  const textParts: string[] = [];
+
+  parts.forEach((part) => {
+    const trimmed = part.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      const inner = trimmed.slice(1, -1);
+      const colonIdx = inner.indexOf(':');
+      if (colonIdx !== -1) {
+        meta.push({
+          label: inner.slice(0, colonIdx).trim(),
+          value: inner.slice(colonIdx + 1).trim(),
+        });
+      } else {
+        textParts.push(inner);
+      }
+    } else {
+      textParts.push(trimmed);
+    }
+  });
+
+  return {
+    meta,
+    text: textParts.join('\n'),
+  };
+};
+
 export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
   customerId,
   onNavigate,
@@ -1317,46 +1351,39 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
             <div className="table-loading-box">جاري تحميل الملاحظات...</div>
           ) : notes.length > 0 ? (
             <div className="notes-list-grid">
-              {notes.map((note) => (
-                <div key={note.id} className="note-card">
-                  <div className="note-card-header">
-                    <div className="note-meta">
-                      <span className="note-employee">{note.employee_name || 'موظف'}</span>
-                      <span className="note-date">{formatDate(note.interaction_date)}</span>
+              {notes.map((note) => {
+                const parsed = parseCorporateNote(note.summary || note.notes || '');
+                return (
+                  <div key={note.id} className="corporate-note-card">
+                    <div className="corporate-note-header">
+                      <div className="corporate-note-meta-row">
+                        <div className="corporate-note-meta-badge">
+                          <span className="corporate-meta-label">تاريخ التسجيل:</span>
+                          <span className="corporate-meta-val">{formatDate(note.interaction_date)}</span>
+                        </div>
+                        {parsed.meta.map((m, idx) => (
+                          <div key={idx} className="corporate-note-meta-badge">
+                            <span className="corporate-meta-label">{m.label}:</span>
+                            <span className="corporate-meta-val">{m.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => handleDeleteNote(note.id)}
+                        className="corporate-note-delete-btn"
+                        disabled={isDeletingNote === note.id}
+                        title="حذف هذه الملاحظة"
+                      >
+                        {isDeletingNote === note.id ? '...' : <Trash size={15} />}
+                      </button>
                     </div>
-                    <button
-                      onClick={() => handleDeleteNote(note.id)}
-                      className="note-delete-btn"
-                      disabled={isDeletingNote === note.id}
-                      title="حذف هذه الملاحظة"
-                    >
-                      {isDeletingNote === note.id ? '...' : <X size={14} />}
-                    </button>
+
+                    <div className="corporate-note-body">
+                      {parsed.text || note.summary || note.notes || '—'}
+                    </div>
                   </div>
-                  {/* Parse rich metadata embedded in summary */}
-                  {(note.summary || note.notes || '').includes('[') ? (
-                    <div className="note-meta-tags">
-                      {(note.summary || note.notes || '').split(' — ').map((part, i) => {
-                        if (part.startsWith('[اسم المندوب:')) {
-                          return <span key={i} className="note-tag note-tag-agent"><User size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
-                        }
-                        if (part.startsWith('[رقم المندوب:')) {
-                          return <span key={i} className="note-tag note-tag-phone"><Phone size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
-                        }
-                        if (part.startsWith('[تاريخ السداد:')) {
-                          return <span key={i} className="note-tag note-tag-date"><Calendar size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
-                        }
-                        if (part.startsWith('[طريقة السداد:') || part.startsWith('[نوع العميل:') || part.startsWith('[طريقة الدفع:')) {
-                          return <span key={i} className="note-tag note-tag-method"><CreditCard size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
-                        }
-                        return <div key={i} className="note-content">{part}</div>;
-                      })}
-                    </div>
-                  ) : (
-                    <div className="note-content">{note.summary || note.notes}</div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="empty-state-box">
@@ -1429,9 +1456,7 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                 onChange={(e) => setCsNoteText(e.target.value)}
                 rows={3}
               />
-              <button type="submit" className="btn-gold-small" disabled={isAddingCsNote || !csNoteText.trim()}
-                style={{ backgroundColor: '#7c3aed', borderColor: '#7c3aed' }}
-              >
+              <button type="submit" className="btn-gold-small" disabled={isAddingCsNote || !csNoteText.trim()}>
                 <PlusCircle size={15} />
                 <span>{isAddingCsNote ? 'جاري الحفظ...' : '+ إضافة ملاحظة خدمة العملاء'}</span>
               </button>
@@ -1443,39 +1468,39 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
             <div className="table-loading-box">جاري تحميل الملاحظات...</div>
           ) : csNotes.length > 0 ? (
             <div className="notes-list-grid">
-              {csNotes.map((note) => (
-                <div key={note.id} className="note-card note-card-cs">
-                  <div className="note-card-header">
-                    <div className="note-meta">
-                      <span className="note-employee cs-note-label">خدمة العملاء</span>
-                      <span className="note-date">{formatDate(note.interaction_date)}</span>
+              {csNotes.map((note) => {
+                const parsed = parseCorporateNote(note.summary || note.notes || '');
+                return (
+                  <div key={note.id} className="corporate-note-card corporate-note-card-cs">
+                    <div className="corporate-note-header">
+                      <div className="corporate-note-meta-row">
+                        <div className="corporate-note-meta-badge">
+                          <span className="corporate-meta-label">تاريخ التسجيل:</span>
+                          <span className="corporate-meta-val">{formatDate(note.interaction_date)}</span>
+                        </div>
+                        {parsed.meta.map((m, idx) => (
+                          <div key={idx} className="corporate-note-meta-badge">
+                            <span className="corporate-meta-label">{m.label}:</span>
+                            <span className="corporate-meta-val">{m.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => handleDeleteCsNote(note.id)}
+                        className="corporate-note-delete-btn"
+                        disabled={isDeletingCsNote === note.id}
+                        title="حذف هذه الملاحظة"
+                      >
+                        {isDeletingCsNote === note.id ? '...' : <Trash size={15} />}
+                      </button>
                     </div>
-                    <button
-                      onClick={() => handleDeleteCsNote(note.id)}
-                      className="note-delete-btn"
-                      disabled={isDeletingCsNote === note.id}
-                      title="حذف هذه الملاحظة"
-                    >
-                      {isDeletingCsNote === note.id ? '...' : <X size={14} />}
-                    </button>
+
+                    <div className="corporate-note-body">
+                      {parsed.text || note.summary || note.notes || '—'}
+                    </div>
                   </div>
-                  {/* Parse rich metadata */}
-                  <div className="note-meta-tags">
-                    {(note.summary || note.notes || '').split(' — ').map((part, i) => {
-                      if (part.startsWith('[اسم موظف خدمة العملاء:') || part.startsWith('[اسم الموظف:')) {
-                        return <span key={i} className="note-tag note-tag-agent"><User size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
-                      }
-                      if (part.startsWith('[رقم الهاتف:')) {
-                        return <span key={i} className="note-tag note-tag-phone"><Phone size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
-                      }
-                      if (part.startsWith('[التاريخ:')) {
-                        return <span key={i} className="note-tag note-tag-date"><Calendar size={11} /> {part.replace(/[\[\]]/g,'')}</span>;
-                      }
-                      return <div key={i} className="note-content">{part}</div>;
-                    })}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="empty-state-box">
