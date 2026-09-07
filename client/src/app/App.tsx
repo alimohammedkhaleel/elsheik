@@ -9,20 +9,18 @@ import { RouteRenderer, getPageTitle } from './routes';
 import '../styles/globals.css';
 
 const MainApp: React.FC = () => {
-  const [currentPath, setCurrentPath] = useState<string>('/');
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    return window.location.hash ? window.location.hash.slice(1) || '/' : '/';
+  });
   const { hasSeenPresentation, markPresentationSeen } = useAnimation();
   const { isAuthenticated, isLoading } = useAuth();
 
   // Sync hash routing
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.slice(1) || '/';
+      const hash = window.location.hash ? window.location.hash.slice(1) || '/' : '/';
       setCurrentPath(hash);
     };
-
-    if (window.location.hash) {
-      handleHashChange();
-    }
 
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
@@ -33,8 +31,20 @@ const MainApp: React.FC = () => {
     setCurrentPath(path);
   };
 
+  // If unauthenticated and presentation is done, ensure path/hash is /login
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      if (hasSeenPresentation && currentPath !== '/login') {
+        navigateTo('/login');
+      }
+    }
+  }, [isLoading, isAuthenticated, currentPath, hasSeenPresentation]);
+
   const handleFinishPresentation = () => {
     markPresentationSeen();
+    if (!isAuthenticated) {
+      navigateTo('/login');
+    }
   };
 
   return (
@@ -45,7 +55,9 @@ const MainApp: React.FC = () => {
       )}
 
       {/* 2. Main System Application Shell */}
-      {currentPath === '/login' || (!isLoading && !isAuthenticated) ? (
+      {isLoading ? (
+        <div style={{ minHeight: '100vh', background: 'var(--color-surface, #f8f8f6)' }} />
+      ) : !isAuthenticated || currentPath === '/login' ? (
         <RouteRenderer
           currentPath={currentPath}
           onNavigate={navigateTo}

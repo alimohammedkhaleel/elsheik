@@ -16,7 +16,7 @@ export const AnimationProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [hasSeenPresentation, setHasSeenPresentation] = useState<boolean>(() => {
     try {
       const hasSeen = sessionStorage.getItem('sheikh_has_seen_presentation');
-      const token = localStorage.getItem('sheikh_auth_token');
+      const token = localStorage.getItem('al_sheikh_auth_token');
       // If user has seen it this session or is already logged in, do not replay intro
       if (hasSeen === 'true' || token) {
         return true;
