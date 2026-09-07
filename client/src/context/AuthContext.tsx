@@ -55,7 +55,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = useCallback(
     async (credentials: LoginCredentials): Promise<{ success: boolean; message: string }> => {
-      setIsLoading(true);
       try {
         const res = await authService.login(credentials);
         if (res && res.user && res.token) {
@@ -67,17 +66,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, message: 'فشل تسجيل الدخول' };
       } catch (err: unknown) {
         const errorMsg =
-          err && typeof err === 'object' && 'response' in err
-            ? (err as { response?: { data?: { message?: string } } }).response?.data?.message || 'اسم المستخدم أو كلمة المرور غير صحيحة'
-            : err instanceof Error
+          err instanceof Error
             ? err.message
-            : 'حدث خطأ أثناء تسجيل الدخول';
+            : err && typeof err === 'object' && 'message' in err
+            ? String((err as { message: unknown }).message)
+            : 'اسم المستخدم أو كلمة المرور غير صحيحة';
         return {
           success: false,
           message: errorMsg,
         };
-      } finally {
-        setIsLoading(false);
       }
     },
     []
@@ -85,37 +82,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = useCallback(
     async (credentials: RegisterCredentials): Promise<{ success: boolean; message: string }> => {
-      setIsLoading(true);
       try {
         const res = await authService.register(credentials);
         return { success: true, message: res.message };
       } catch (err: unknown) {
         const errorMsg =
-          err && typeof err === 'object' && 'response' in err
-            ? (err as { response?: { data?: { message?: string } } }).response?.data?.message || 'فشل تقديم طلب التسجيل'
-            : err instanceof Error
+          err instanceof Error
             ? err.message
+            : err && typeof err === 'object' && 'message' in err
+            ? String((err as { message: unknown }).message)
             : 'حدث خطأ أثناء التسجيل';
         return {
           success: false,
           message: errorMsg,
         };
-      } finally {
-        setIsLoading(false);
       }
     },
     []
   );
 
   const logout = useCallback(async (): Promise<void> => {
-    setIsLoading(true);
     try {
       await authService.logout();
     } finally {
       setUser(null);
       setToken(null);
       setPermissions([]);
-      setIsLoading(false);
     }
   }, []);
 
