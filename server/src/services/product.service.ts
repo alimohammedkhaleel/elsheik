@@ -17,9 +17,11 @@ export class ProductService {
   }
 
   async createProduct(input: CreateProductInput, adminId?: number): Promise<Product> {
-    const existing = await productRepository.findByCode(input.product_code);
-    if (existing) {
-      throw new AppError('كود الصنف مستخدم لمنتج آخر بالفعل', 400, 'PRODUCT_CODE_EXISTS');
+    if (input.product_code && input.product_code.trim()) {
+      const existing = await productRepository.findByCode(input.product_code.trim());
+      if (existing) {
+        throw new AppError('كود الصنف مستخدم لمنتج آخر بالفعل', 400, 'PRODUCT_CODE_EXISTS');
+      }
     }
 
     if (input.purchase_price < 0 || input.selling_price < 0) {

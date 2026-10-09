@@ -156,9 +156,11 @@
 .sidebar-backdrop {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.4);
-  z-index: 99;
-  backdrop-filter: blur(2px);
+  background-color: rgba(15, 23, 42, 0.65);
+  z-index: 1100;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: opacity 0.25s ease;
 }
 
 @media (max-width: 1024px) {
@@ -166,8 +168,15 @@
     position: fixed;
     top: 0;
     right: 0;
+    bottom: 0;
+    height: 100vh;
+    height: 100dvh;
+    width: 280px;
+    max-width: 85vw;
     transform: translateX(100%);
-    box-shadow: var(--shadow-lg);
+    box-shadow: -4px 0 28px rgba(0, 0, 0, 0.25);
+    z-index: 1200;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .sidebar-open-mobile {
@@ -176,5 +185,10 @@
 
   .sidebar-mobile-close-btn {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
   }
 }

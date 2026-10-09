@@ -306,22 +306,79 @@
   background-color: #FEF2F2 !important;
 }
 
+/* Notifications Dropdown */
+.topbar-notif-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 380px;
+  max-width: calc(100vw - 20px);
+  max-height: 480px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+  border-radius: 12px;
+  padding: 0;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  animation: dropdownFadeIn 0.15s ease-out;
+}
+
 /* Mobile/Tablet responsive — must match sidebar breakpoint at 1024px */
 @media (max-width: 1024px) {
   .sheikh-topbar {
-    height: 56px;
+    height: 60px;
     padding: 0 16px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
   }
 
   .topbar-menu-btn {
     display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
+    width: 42px;
+    height: 42px;
+    border-radius: 8px;
+    background-color: var(--color-background-alt);
+    border: 1px solid var(--color-border);
+  }
+
+  .topbar-menu-btn:active {
+    transform: scale(0.95);
   }
 }
 
 @media (max-width: 768px) {
   .sheikh-topbar {
+    height: 56px;
     padding: 0 12px;
+    gap: 8px;
+  }
+
+  .topbar-right {
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .topbar-title-wrap {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .topbar-page-title {
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+  }
+
+  .topbar-subtitle {
+    display: none;
   }
 
   .user-info-text {
@@ -329,40 +386,58 @@
   }
 
   .topbar-user-profile-btn {
-    padding: 5px 8px 5px 8px;
-    gap: 6px;
+    padding: 4px;
+    gap: 0;
     border-radius: 50%;
-    min-width: 40px;
-    height: 40px;
+    min-width: 36px;
+    height: 36px;
     justify-content: center;
   }
 
-  .topbar-page-title {
-    font-size: 0.95rem;
-  }
-
-  .topbar-subtitle {
+  .dropdown-arrow-icon {
     display: none;
   }
 
-  /* Prevent dropdowns from overflowing viewport */
+  /* Prevent dropdowns from overflowing viewport on small screens */
   .user-profile-dropdown {
     width: min(280px, calc(100vw - 20px));
-    left: auto;
-    right: 0;
+    left: 0;
+    right: auto;
+    z-index: 1000;
+  }
+
+  .topbar-notif-dropdown {
+    width: min(340px, calc(100vw - 20px));
+    left: 0;
+    right: auto;
+    max-height: 70vh;
   }
 
   .topbar-left {
-    gap: 6px;
-  }
-
-  .topbar-right {
     gap: 8px;
+    flex-shrink: 0;
   }
 }
 
 @media (max-width: 480px) {
   .sheikh-topbar {
     padding: 0 8px;
+  }
+
+  .topbar-page-title {
+    font-size: 0.88rem;
+    max-width: 130px;
+  }
+
+  .topbar-menu-btn {
+    width: 38px;
+    height: 38px;
+    padding: 6px;
+  }
+
+  .topbar-notif-dropdown {
+    width: calc(100vw - 16px);
+    left: -40px;
+    right: auto;
   }
 }

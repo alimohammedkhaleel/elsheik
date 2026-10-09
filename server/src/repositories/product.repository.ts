@@ -127,8 +127,30 @@ export class ProductRepository {
     return p ? { ...p } : null;
   }
 
+  async generateNextCode(): Promise<string> {
+    const { isConfigured } = validateDatabaseEnv();
+    if (isConfigured) {
+      try {
+        const sql = `
+          SELECT COALESCE(MAX(id), 0) + 1 AS next_id, COUNT(*) as total_count FROM products;
+        `;
+        const result = await query<{ next_id: string; total_count: string }>(sql);
+        const nextId = parseInt(result.rows[0]?.next_id || '1', 10);
+        return `PRD-${nextId + 100}`;
+      } catch {
+        // Fallback to memory
+      }
+    }
+    const maxMemory = memoryProducts.length > 0 ? memoryProducts.length + 101 : 101;
+    return `PRD-${maxMemory}`;
+  }
+
   async create(input: CreateProductInput): Promise<Product> {
     const now = new Date().toISOString();
+    const productCode = (input.product_code && input.product_code.trim())
+      ? input.product_code.trim().toUpperCase()
+      : await this.generateNextCode();
+
     const { isConfigured } = validateDatabaseEnv();
 
     if (isConfigured) {
@@ -139,7 +161,7 @@ export class ProductRepository {
           RETURNING *;
         `;
         const result = await query<Product>(sql, [
-          input.product_code.trim().toUpperCase(),
+          productCode,
           input.name.trim(),
           input.description || null,
           input.unit || 'قطعة',
@@ -155,7 +177,7 @@ export class ProductRepository {
 
     const newProd: Product = {
       id: memoryProducts.length + 1,
-      product_code: input.product_code.trim().toUpperCase(),
+      product_code: productCode,
       name: input.name.trim(),
       description: input.description || null,
       unit: input.unit || 'قطعة',

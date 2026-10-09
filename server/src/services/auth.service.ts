@@ -36,7 +36,18 @@ const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'data.submit',
   ],
   EMPLOYEE: ['customers.manage', 'sales.view', 'data.submit'],
+  SALES_REP: ['customers.manage', 'sales.view', 'data.submit'],
   COLLECTOR: ['customers.manage', 'payments.view', 'payments.record', 'data.submit'],
+  ACCOUNTANT: [
+    'customers.manage',
+    'sales.view',
+    'sales.manage',
+    'payments.view',
+    'payments.manage',
+    'reports.view',
+    'data.submit',
+  ],
+  DATA_ENTRY: ['customers.manage', 'products.manage', 'data.submit'],
   CUSTOMER: ['customer.portal.view', 'customer.portal.manage'],
 };
 

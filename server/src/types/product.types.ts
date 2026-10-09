@@ -12,7 +12,7 @@ export interface Product {
 }
 
 export interface CreateProductInput {
-  product_code: string;
+  product_code?: string;
   name: string;
   description?: string;
   unit?: string;

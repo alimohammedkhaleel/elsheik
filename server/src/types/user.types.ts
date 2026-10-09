@@ -1,4 +1,12 @@
-export type UserRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'COLLECTOR' | 'CUSTOMER';
+export type UserRole =
+  | 'ADMIN'
+  | 'MANAGER'
+  | 'EMPLOYEE'
+  | 'COLLECTOR'
+  | 'CUSTOMER'
+  | 'SALES_REP'
+  | 'ACCOUNTANT'
+  | 'DATA_ENTRY';
 
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'PENDING_APPROVAL' | 'REJECTED';
 

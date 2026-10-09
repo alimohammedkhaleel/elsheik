@@ -1,6 +1,7 @@
 import { query } from '../config/database';
 import { validateDatabaseEnv } from '../config/env';
 import { User, CreateUserInput, UpdateUserInput, UserRole, UserStatus } from '../types/user.types';
+import { Logger } from '../utils/logger';
 import bcrypt from 'bcryptjs';
 
 // Pre-computed hash for 'Admin@123456' and '123456'
@@ -295,7 +296,7 @@ export class UserRepository {
         const result = await query<User>(sql, params);
         return result.rows[0] || null;
       } catch (err) {
-        // Fallback to memory
+        Logger.error('Error updating user in database:', err);
       }
     }
 

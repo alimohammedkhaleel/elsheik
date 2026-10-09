@@ -56,7 +56,21 @@ export const ProductsPage: React.FC = () => {
 
   const handleOpenCreate = () => {
     setEditingProduct(null);
-    setProdCode('');
+    let nextNum = 101;
+    if (products.length > 0) {
+      const numbers = products
+        .map((p) => {
+          const m = p.product_code.match(/\d+/);
+          return m ? parseInt(m[0], 10) : 0;
+        })
+        .filter((n) => !isNaN(n) && n > 0);
+      if (numbers.length > 0) {
+        nextNum = Math.max(...numbers) + 1;
+      } else {
+        nextNum = products.length + 101;
+      }
+    }
+    setProdCode(`PRD-${nextNum}`);
     setProdName('');
     setProdDesc('');
     setProdUnit('قطعة');
