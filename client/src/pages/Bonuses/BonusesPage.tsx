@@ -82,7 +82,7 @@ export const BonusesPage: React.FC = () => {
       const res = await userService.getAllUsers();
       const usersData = Array.isArray(res) ? res : ((res as any)?.data || []);
       const fieldStaff = usersData.filter(
-        (u: User) => u.status === 'ACTIVE' && (u.role === 'EMPLOYEE' || u.role === 'COLLECTOR')
+        (u: User) => u.status === 'ACTIVE' && (u.role === 'EMPLOYEE' || u.role === 'COLLECTOR' || u.role === 'SALES_REP')
       );
       setRepsList(fieldStaff);
       return fieldStaff;

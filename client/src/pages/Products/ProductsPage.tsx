@@ -57,10 +57,11 @@ export const ProductsPage: React.FC = () => {
   const handleOpenCreate = () => {
     setEditingProduct(null);
     let nextNum = 101;
-    if (products.length > 0) {
+    if (products && products.length > 0) {
       const numbers = products
         .map((p) => {
-          const m = p.product_code.match(/\d+/);
+          if (!p || !p.product_code) return 0;
+          const m = String(p.product_code).match(/\d+/);
           return m ? parseInt(m[0], 10) : 0;
         })
         .filter((n) => !isNaN(n) && n > 0);

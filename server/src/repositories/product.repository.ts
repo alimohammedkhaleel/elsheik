@@ -112,18 +112,21 @@ export class ProductRepository {
 
   async findByCode(code: string): Promise<Product | null> {
     const { isConfigured } = validateDatabaseEnv();
+    const cleanCode = code ? String(code).trim().toLowerCase() : '';
+
+    if (!cleanCode) return null;
 
     if (isConfigured) {
       try {
         const sql = `SELECT * FROM products WHERE LOWER(product_code) = $1 LIMIT 1;`;
-        const result = await query<Product>(sql, [code.trim().toLowerCase()]);
+        const result = await query<Product>(sql, [cleanCode]);
         return result.rows[0] || null;
       } catch (err) {
         // Fallback to memory
       }
     }
 
-    const p = memoryProducts.find((item) => item.product_code.toLowerCase() === code.trim().toLowerCase());
+    const p = memoryProducts.find((item) => (item.product_code || '').toLowerCase() === cleanCode);
     return p ? { ...p } : null;
   }
 
@@ -147,9 +150,9 @@ export class ProductRepository {
 
   async create(input: CreateProductInput): Promise<Product> {
     const now = new Date().toISOString();
-    const productCode = (input.product_code && input.product_code.trim())
-      ? input.product_code.trim().toUpperCase()
-      : await this.generateNextCode();
+    const rawCode = input.product_code !== undefined && input.product_code !== null ? String(input.product_code).trim() : '';
+    const productCode = rawCode.length > 0 ? rawCode.toUpperCase() : await this.generateNextCode();
+    const prodName = input.name !== undefined && input.name !== null ? String(input.name).trim() : 'صنف بدون اسم';
 
     const { isConfigured } = validateDatabaseEnv();
 
@@ -162,8 +165,8 @@ export class ProductRepository {
         `;
         const result = await query<Product>(sql, [
           productCode,
-          input.name.trim(),
-          input.description || null,
+          prodName,
+          input.description ? String(input.description).trim() : null,
           input.unit || 'قطعة',
           input.purchase_price,
           input.selling_price,
@@ -178,8 +181,8 @@ export class ProductRepository {
     const newProd: Product = {
       id: memoryProducts.length + 1,
       product_code: productCode,
-      name: input.name.trim(),
-      description: input.description || null,
+      name: prodName,
+      description: input.description ? String(input.description).trim() : null,
       unit: input.unit || 'قطعة',
       purchase_price: Number(input.purchase_price),
       selling_price: Number(input.selling_price),
