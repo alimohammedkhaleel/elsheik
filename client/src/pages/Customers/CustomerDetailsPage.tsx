@@ -1255,8 +1255,13 @@ export const CustomerDetailsPage: React.FC<CustomerDetailsPageProps> = ({
                             </span>
                           </td>
                           <td className="font-bold">{formatCurrency(inv.total)}</td>
-                          <td className="text-success font-semibold">{formatCurrency(inv.paid_amount || 0)}</td>
-                          <td className="text-amber font-semibold">{formatCurrency(inv.remaining_amount || inv.total)}</td>
+                          <td className="text-amber font-semibold">
+                            {formatCurrency(
+                              inv.remaining_amount !== undefined && inv.remaining_amount !== null
+                                ? Number(inv.remaining_amount)
+                                : Math.max(0, Number(inv.total) - Number(inv.paid_amount || 0))
+                            )}
+                          </td>
                           <td>
                             <span className={`invoice-status-pill status-${inv.payment_status}`}>
                               {inv.payment_status === 'PAID'

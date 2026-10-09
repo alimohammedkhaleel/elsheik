@@ -305,7 +305,7 @@ export class PaymentRepository {
             ]
           );
 
-          // 3. Allocate Payment to Invoice if specified
+          // 3. Allocate Payment to Invoices (Specific invoice or FIFO auto-allocation for general payments)
           if (input.invoice_id) {
             await client.query(
               `INSERT INTO payment_allocations (payment_id, invoice_id, amount) VALUES ($1, $2, $3);`,
@@ -327,6 +327,38 @@ export class PaymentRepository {
               const totalPaid = Number(invCheck.rows[0].paid);
               const newStatus = totalPaid >= invTotal ? 'PAID' : totalPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
               await client.query(`UPDATE invoices SET payment_status = $1, updated_at = NOW() WHERE id = $2;`, [newStatus, input.invoice_id]);
+            }
+            // General payment: Auto-allocate FIFO to open unpaid/partially-paid invoices for this customer
+            const openInvs = await client.query<{ id: number; total: string }>(
+              `SELECT id, total
+               FROM invoices
+               WHERE customer_id = $1 AND payment_status != 'PAID'
+               ORDER BY invoice_date ASC, id ASC
+               FOR UPDATE;`,
+              [input.customer_id]
+            );
+
+            let unallocatedAmount = amount;
+            for (const inv of openInvs.rows) {
+              if (unallocatedAmount <= 0) break;
+              const invTotal = Number(inv.total);
+              const paidRes = await client.query<{ paid: string }>(
+                `SELECT COALESCE(SUM(amount), 0) as paid FROM payment_allocations WHERE invoice_id = $1`,
+                [inv.id]
+              );
+              const alreadyPaid = Number(paidRes.rows[0]?.paid || 0);
+              const needed = Math.max(0, invTotal - alreadyPaid);
+              if (needed > 0) {
+                const allocAmount = Math.min(needed, unallocatedAmount);
+                await client.query(
+                  `INSERT INTO payment_allocations (payment_id, invoice_id, amount) VALUES ($1, $2, $3);`,
+                  [createdPayment.id, inv.id, allocAmount]
+                );
+                const newPaid = alreadyPaid + allocAmount;
+                const newStatus = newPaid >= invTotal ? 'PAID' : 'PARTIALLY_PAID';
+                await client.query(`UPDATE invoices SET payment_status = $1, updated_at = NOW() WHERE id = $2;`, [newStatus, inv.id]);
+                unallocatedAmount = Math.max(0, unallocatedAmount - allocAmount);
+              }
             }
           }
 
@@ -609,24 +641,34 @@ export class PaymentRepository {
         if (!pmtRes.rows[0]) return false;
         const pmt = pmtRes.rows[0];
 
-        if (pmt.invoice_id) {
+        // 1. Find all affected invoices from payment_allocations
+        const allocsRes = await client.query<{ invoice_id: number }>(
+          `SELECT DISTINCT invoice_id FROM payment_allocations WHERE payment_id = $1`,
+          [id]
+        );
+        const affectedInvoiceIds = allocsRes.rows.map((r) => r.invoice_id);
+        if (pmt.invoice_id && !affectedInvoiceIds.includes(pmt.invoice_id)) {
+          affectedInvoiceIds.push(pmt.invoice_id);
+        }
+
+        // 2. Remove allocations
+        await client.query('DELETE FROM payment_allocations WHERE payment_id = $1', [id]);
+
+        // 3. Recalculate status of all affected invoices
+        for (const invId of affectedInvoiceIds) {
           const invRes = await client.query<{ id: number; total: string }>(
             `SELECT id, total FROM invoices WHERE id = $1 FOR UPDATE`,
-            [pmt.invoice_id]
+            [invId]
           );
-
-          await client.query('DELETE FROM payment_allocations WHERE payment_id = $1', [id]);
-
-          const allocSumRes = await client.query<{ paid: string }>(
-            `SELECT COALESCE(SUM(amount), 0) as paid FROM payment_allocations WHERE invoice_id = $1`,
-            [pmt.invoice_id]
-          );
-
           if (invRes.rows[0]) {
+            const allocSumRes = await client.query<{ paid: string }>(
+              `SELECT COALESCE(SUM(amount), 0) as paid FROM payment_allocations WHERE invoice_id = $1`,
+              [invId]
+            );
             const invTotal = Number(invRes.rows[0].total);
             const totalPaid = Number(allocSumRes.rows[0]?.paid || 0);
             const newStatus = totalPaid >= invTotal ? 'PAID' : totalPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
-            await client.query(`UPDATE invoices SET payment_status = $1, updated_at = NOW() WHERE id = $2;`, [newStatus, pmt.invoice_id]);
+            await client.query(`UPDATE invoices SET payment_status = $1, updated_at = NOW() WHERE id = $2;`, [newStatus, invId]);
           }
         }
 

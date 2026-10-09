@@ -273,6 +273,11 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({ onNavigate }) => {
     }
   };
 
+  const formatDate = (val?: string) => {
+    if (!val) return '—';
+    return String(val).split('T')[0]
+  };
+
   const formatCurrency = (val: number) => {
     return Number(val || 0).toLocaleString('ar-EG', {
       minimumFractionDigits: 2,
@@ -398,35 +403,41 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({ onNavigate }) => {
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((inv) => (
-                  <tr key={inv.id}>
-                    <td>
-                      <span className="code-pill">{inv.invoice_number}</span>
-                    </td>
-                    <td className="font-semibold">{inv.customer_name}</td>
-                    <td>{inv.invoice_date}</td>
-                    <td>{inv.due_date}</td>
-                    <td>
-                      <span className={`payment-type-badge ${inv.payment_type === 'CREDIT' ? 'badge-credit' : 'badge-cash'}`}>
-                        {inv.payment_type === 'CREDIT' ? 'آجل' : 'نقدي'}
-                      </span>
-                    </td>
-                    <td className="font-bold text-gold-dark">{formatCurrency(inv.total)}</td>
-                    <td className="font-semibold text-success">{formatCurrency(inv.paid_amount || 0)}</td>
-                    <td className={`font-semibold ${(inv.remaining_amount || inv.total) > 0 ? 'text-amber' : 'text-success'}`}>
-                      {formatCurrency(inv.remaining_amount || inv.total)}
-                    </td>
-                    <td>
-                      <span className={`invoice-status-pill status-${inv.payment_status}`}>
-                        {inv.payment_status === 'PAID'
-                          ? 'مدفوعة'
-                          : inv.payment_status === 'PARTIALLY_PAID'
-                          ? 'سداد جزئي'
-                          : inv.payment_status === 'OVERDUE'
-                          ? 'متأخرة'
-                          : 'غير مسددة'}
-                      </span>
-                    </td>
+                {invoices.map((inv) => {
+                  const paid = Number(inv.paid_amount || 0);
+                  const rem = inv.remaining_amount !== undefined && inv.remaining_amount !== null
+                    ? Number(inv.remaining_amount)
+                    : Math.max(0, Number(inv.total) - paid);
+
+                  return (
+                    <tr key={inv.id}>
+                      <td>
+                        <span className="code-pill">{inv.invoice_number}</span>
+                      </td>
+                      <td className="font-semibold">{inv.customer_name}</td>
+                      <td>{formatDate(inv.invoice_date)}</td>
+                      <td>{formatDate(inv.due_date)}</td>
+                      <td>
+                        <span className={`payment-type-badge ${inv.payment_type === 'CREDIT' ? 'badge-credit' : 'badge-cash'}`}>
+                          {inv.payment_type === 'CREDIT' ? 'آجل' : 'نقدي'}
+                        </span>
+                      </td>
+                      <td className="font-bold text-gold-dark">{formatCurrency(inv.total)}</td>
+                      <td className="font-semibold text-success">{formatCurrency(paid)}</td>
+                      <td className={`font-semibold ${rem > 0 ? 'text-amber' : 'text-success'}`}>
+                        {formatCurrency(rem)}
+                      </td>
+                      <td>
+                        <span className={`invoice-status-pill status-${inv.payment_status}`}>
+                          {inv.payment_status === 'PAID'
+                            ? 'مدفوعة'
+                            : inv.payment_status === 'PARTIALLY_PAID'
+                            ? 'سداد جزئي'
+                            : inv.payment_status === 'OVERDUE'
+                            ? 'متأخرة'
+                            : 'غير مسددة'}
+                        </span>
+                      </td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center', alignItems: 'center' }}>
                         {onNavigate && (
@@ -457,8 +468,9 @@ export const InvoicesPage: React.FC<InvoicesPageProps> = ({ onNavigate }) => {
                       </div>
                     </td>
                   </tr>
-                ))}
-              </tbody>
+                );
+              })}
+            </tbody>
             </table>
           </div>
         ) : (
