@@ -18,6 +18,7 @@ export interface InvoiceItem {
 export interface Invoice {
   id: number;
   invoice_number: string;
+  idempotency_key?: string | null;
   customer_id: number;
   customer_name?: string;
   customer_code?: string;
@@ -48,6 +49,7 @@ export interface CreateInvoiceItemInput {
 
 export interface CreateInvoiceInput {
   invoice_number?: string;
+  idempotency_key?: string;
   customer_id: number;
   invoice_date?: string;
   employee_id?: number;

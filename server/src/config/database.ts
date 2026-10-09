@@ -55,6 +55,48 @@ export const getClient = async (): Promise<PoolClient> => {
 };
 
 /**
+ * Enterprise Transaction Runner:
+ * Guarantees BEGIN -> Execution -> COMMIT, with safe ROLLBACK on error,
+ * and guaranteed client.release() in a finally block to prevent connection leaks.
+ */
+export const withTransaction = async <T>(
+  callback: (client: PoolClient) => Promise<T>
+): Promise<T> => {
+  const activePool = getDatabasePool();
+  const client = await activePool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Error during transaction rollback:', rollbackError);
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * Returns pool utilization statistics for monitoring & health checks.
+ */
+export const getPoolStats = () => {
+  if (!pool) {
+    return { isInitialized: false, totalCount: 0, idleCount: 0, waitingCount: 0 };
+  }
+  return {
+    isInitialized: true,
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+    waitingCount: pool.waitingCount,
+  };
+};
+
+/**
  * Graceful shutdown for pool connections.
  */
 export const closeDatabasePool = async (): Promise<void> => {

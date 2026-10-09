@@ -3,6 +3,7 @@ export type PaymentMethod = 'CASH' | 'WALLET' | 'NSP' | 'BANK_TRANSFER' | 'INSTA
 export interface Payment {
   id: number;
   receipt_number: string;
+  idempotency_key?: string | null;
   customer_id: number;
   customer_name?: string;
   customer_code?: string;
@@ -30,6 +31,7 @@ export interface PaymentAllocation {
 
 export interface CreatePaymentInput {
   receipt_number?: string;
+  idempotency_key?: string;
   customer_id: number;
   invoice_id?: number;
   payment_date?: string;

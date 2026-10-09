@@ -5,6 +5,7 @@ import { auditService } from './audit.service';
 import { AppError } from '../middleware/errorHandler';
 import { Invoice, CreateInvoiceInput, InvoiceFilterOptions } from '../types/invoice.types';
 import { UserRole } from '../types/user.types';
+import { roundMoney } from '../utils/money';
 
 export class InvoiceService {
   async getInvoices(
@@ -18,13 +19,6 @@ export class InvoiceService {
     const invoice = await invoiceRepository.findById(id);
     if (!invoice) {
       throw new AppError('الفاتورة غير موجودة', 404, 'INVOICE_NOT_FOUND');
-    }
-
-    if (actor && (actor.role === 'EMPLOYEE' || actor.role === 'COLLECTOR')) {
-      const customer = await customerRepository.findById(invoice.customer_id, actor);
-      if (!customer) {
-        throw new AppError('ليس لديك الصلاحية للوصول إلى هذه الفاتورة', 403, 'FORBIDDEN');
-      }
     }
 
     return invoice;
@@ -52,18 +46,36 @@ export class InvoiceService {
       }
     }
 
-    // Verify and load product unit prices if not passed
+    // Server-side financial validation of line items
+    let calculatedSubtotal = 0;
     for (const item of input.items) {
       if (item.quantity <= 0) {
         throw new AppError('الكمية يجب أن تكون أكبر من الصفر', 400, 'INVALID_QUANTITY');
       }
+
       const product = await productRepository.findById(item.product_id);
       if (!product) {
         throw new AppError(`المنتج رقم #${item.product_id} غير موجود`, 404, 'PRODUCT_NOT_FOUND');
       }
+
       if (item.unit_price === undefined || item.unit_price === null) {
         item.unit_price = Number(product.selling_price);
       }
+
+      item.unit_price = roundMoney(item.unit_price);
+      item.discount = roundMoney(item.discount || 0);
+
+      const gross = roundMoney(item.quantity * item.unit_price);
+      if (item.discount > gross) {
+        throw new AppError(`خصم البند لا يمكن أن يتجاوز إجمالي الصنف (${product.name})`, 400, 'ITEM_DISCOUNT_EXCEEDS_TOTAL');
+      }
+
+      calculatedSubtotal += (gross - item.discount);
+    }
+
+    const overallDiscount = roundMoney(input.discount || 0);
+    if (overallDiscount > calculatedSubtotal) {
+      throw new AppError('قيمة الخصم الإجمالي لا يمكن أن تتجاوز إجمالي الفاتورة', 400, 'DISCOUNT_EXCEEDS_SUBTOTAL');
     }
 
     // Inherit customer payment type if not specified

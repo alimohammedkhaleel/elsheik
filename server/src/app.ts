@@ -1,5 +1,7 @@
 import express, { Application } from 'express';
 import { corsMiddleware } from './config/cors';
+import { securityHeaders } from './middleware/securityHeaders';
+import { apiRateLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/requestLogger';
 import { notFoundHandler } from './middleware/notFoundHandler';
 import { errorHandler } from './middleware/errorHandler';
@@ -8,8 +10,13 @@ import { apiRouter } from './routes';
 export const createApp = (): Application => {
   const app: Application = express();
 
+  // Trust proxy for secure cookies and accurate client IP behind Vercel / Nginx
+  app.set('trust proxy', 1);
+
   // Security & Utility Middlewares
+  app.use(securityHeaders);
   app.use(corsMiddleware);
+  app.use(apiRateLimiter);
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(requestLogger);
@@ -24,7 +31,7 @@ export const createApp = (): Application => {
     });
   });
 
-  // Mount API Router
+  // Mount API Router for both /api prefix and root level
   app.use('/api', apiRouter);
   app.use('/', apiRouter);
 

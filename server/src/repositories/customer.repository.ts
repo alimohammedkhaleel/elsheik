@@ -1,4 +1,4 @@
-import { query, getClient } from '../config/database';
+import { query, withTransaction } from '../config/database';
 import { validateDatabaseEnv } from '../config/env';
 import { Customer, CustomerAssignmentRecord, CreateCustomerInput, UpdateCustomerInput, CustomerFilterOptions, CustomerStatus, AssignmentType } from '../types/customer.types';
 import { UserRole } from '../types/user.types';
@@ -568,23 +568,55 @@ export class CustomerRepository {
 
         const result = await query<Customer>(sql, params);
 
-        // Count total matching records
+        // Count total matching records with full SQL parameterization
+        const countClauses: string[] = ['1=1'];
+        const countParams: unknown[] = [];
+        let cpIndex = 1;
+
+        if (options?.assigned_employee_id !== undefined) {
+          countClauses.push(`c.assigned_employee_id = $${cpIndex}`);
+          countParams.push(options.assigned_employee_id);
+          cpIndex++;
+        }
+
+        if (options?.search) {
+          const searchPattern = `%${options.search.trim().toLowerCase()}%`;
+          countClauses.push(`(LOWER(c.name) LIKE $${cpIndex} OR LOWER(c.customer_code) LIKE $${cpIndex} OR LOWER(c.phone) LIKE $${cpIndex} OR LOWER(COALESCE(c.trade_name, '')) LIKE $${cpIndex})`);
+          countParams.push(searchPattern);
+          cpIndex++;
+        }
+
+        if (options?.payment_type) {
+          countClauses.push(`c.payment_type = $${cpIndex}`);
+          countParams.push(options.payment_type);
+          cpIndex++;
+        }
+
+        if (options?.status) {
+          countClauses.push(`c.status = $${cpIndex}`);
+          countParams.push(options.status);
+          cpIndex++;
+        }
+
+        if (options?.classification) {
+          countClauses.push(`c.classification = $${cpIndex}`);
+          countParams.push(options.classification);
+          cpIndex++;
+        }
+
         const countSql = `
           SELECT COUNT(c.id) as total 
           FROM customers c 
-          WHERE 1=1 
-          ${options?.assigned_employee_id !== undefined ? `AND c.assigned_employee_id = ${options.assigned_employee_id}` : ''}
-          ${options?.search ? `AND (LOWER(c.name) LIKE '%${options.search.toLowerCase()}%' OR LOWER(c.customer_code) LIKE '%${options.search.toLowerCase()}%' OR LOWER(c.phone) LIKE '%${options.search.toLowerCase()}%')` : ''}
-          ${options?.payment_type ? `AND c.payment_type = '${options.payment_type}'` : ''}
-          ${options?.status ? `AND c.status = '${options.status}'` : ''}
-          ${options?.classification ? `AND c.classification = '${options.classification}'` : ''}
+          WHERE ${countClauses.join(' AND ')}
         `;
-        const countRes = await query<{ total: string }>(countSql);
+        const countRes = await query<{ total: string }>(countSql, countParams);
         const total = countRes.rows[0] ? parseInt(countRes.rows[0].total, 10) : result.rows.length;
 
         return { data: result.rows, total };
       } catch (err) {
-        // Fallback to memory
+        if (process.env.NODE_ENV === 'production') {
+          throw err;
+        }
       }
     }
 
@@ -933,9 +965,7 @@ export class CustomerRepository {
   async delete(id: number): Promise<boolean> {
     const { isConfigured } = validateDatabaseEnv();
     if (isConfigured) {
-      try {
-        const client = await getClient();
-        await client.query('BEGIN');
+      return withTransaction(async (client) => {
         await client.query('DELETE FROM customer_assignments WHERE customer_id = $1', [id]);
         await client.query('DELETE FROM customer_interactions WHERE customer_id = $1', [id]);
         await client.query('DELETE FROM account_transactions WHERE customer_id = $1', [id]);
@@ -944,12 +974,8 @@ export class CustomerRepository {
         await client.query('DELETE FROM payments WHERE customer_id = $1', [id]);
         await client.query('DELETE FROM invoices WHERE customer_id = $1', [id]);
         const res = await client.query('DELETE FROM customers WHERE id = $1', [id]);
-        await client.query('COMMIT');
-        client.release();
         return (res.rowCount ?? 0) > 0;
-      } catch (err) {
-        // Fallback
-      }
+      });
     }
 
     const idx = memoryCustomers.findIndex((c) => c.id === id);

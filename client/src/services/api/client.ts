@@ -39,6 +39,32 @@ export class ApiClient {
     return headers;
   }
 
+  private static async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
+    const contentType = response.headers.get('content-type');
+    
+    if (response.status === 401) {
+      // Token expired or invalid
+      this.removeToken();
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    }
+
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        const data: ApiResponse<T> = await response.json();
+        return data;
+      } catch {
+        // Fallthrough if json parsing fails
+      }
+    }
+
+    const text = await response.text();
+    return {
+      success: response.ok,
+      message: response.ok ? 'تمت العملية بنجاح' : (text || `خطأ في الخادم (${response.status})`),
+      error: !response.ok ? { code: `HTTP_${response.status}`, details: text } : undefined,
+    };
+  }
+
   static async get<T>(endpoint: string): Promise<ApiResponse<T>> {
     try {
       const response = await fetch(`${BASE_URL}${endpoint}`, {
@@ -46,8 +72,7 @@ export class ApiClient {
         headers: this.getHeaders(),
       });
 
-      const data: ApiResponse<T> = await response.json();
-      return data;
+      return await this.handleResponse<T>(response);
     } catch (error) {
       return {
         success: false,
@@ -68,8 +93,7 @@ export class ApiClient {
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
 
-      const data: ApiResponse<T> = await response.json();
-      return data;
+      return await this.handleResponse<T>(response);
     } catch (error) {
       return {
         success: false,
@@ -90,8 +114,7 @@ export class ApiClient {
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
 
-      const data: ApiResponse<T> = await response.json();
-      return data;
+      return await this.handleResponse<T>(response);
     } catch (error) {
       return {
         success: false,
@@ -112,8 +135,7 @@ export class ApiClient {
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
 
-      const data: ApiResponse<T> = await response.json();
-      return data;
+      return await this.handleResponse<T>(response);
     } catch (error) {
       return {
         success: false,
@@ -133,8 +155,7 @@ export class ApiClient {
         headers: this.getHeaders(),
       });
 
-      const data: ApiResponse<T> = await response.json();
-      return data;
+      return await this.handleResponse<T>(response);
     } catch (error) {
       return {
         success: false,

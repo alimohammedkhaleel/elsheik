@@ -88,6 +88,27 @@ export class PaymentService {
       throw new AppError('سند التحصيل غير موجود', 404, 'PAYMENT_NOT_FOUND');
     }
 
+    if (input.amount !== undefined) {
+      const amount = Number(input.amount);
+      if (isNaN(amount) || amount <= 0) {
+        throw new AppError('مبلغ التحصيل يجب أن يكون قيمة موجبة أكبر من الصفر', 400, 'INVALID_AMOUNT');
+      }
+    }
+
+    if (input.customer_id && input.customer_id !== existing.customer_id) {
+      throw new AppError('لا يمكن تغيير العميل لسند تحصيل مسجل مسبقاً', 400, 'CUSTOMER_CHANGE_NOT_ALLOWED');
+    }
+
+    if (input.invoice_id) {
+      const invoice = await invoiceRepository.findById(input.invoice_id);
+      if (!invoice) {
+        throw new AppError('الفاتورة المحددة غير موجودة', 404, 'INVOICE_NOT_FOUND');
+      }
+      if (invoice.customer_id !== existing.customer_id) {
+        throw new AppError('الفاتورة المحددة لا تخص هذا العميل', 400, 'INVOICE_CUSTOMER_MISMATCH');
+      }
+    }
+
     const updated = await paymentRepository.update(id, input);
     if (!updated) {
       throw new AppError('فشل تعديل سند التحصيل', 500, 'UPDATE_FAILED');

@@ -1,7 +1,8 @@
-import { query, getClient } from '../config/database';
+import { query, withTransaction } from '../config/database';
 import { validateDatabaseEnv } from '../config/env';
 import { Payment, CreatePaymentInput, PaymentFilterOptions } from '../types/payment.types';
 import { UserRole } from '../types/user.types';
+import { roundMoney } from '../utils/money';
 import { memoryAccountTransactions, memoryInvoices } from './invoice.repository';
 import { memoryUsers } from './user.repository';
 import { memoryCustomers } from './customer.repository';
@@ -31,64 +32,109 @@ export class PaymentRepository {
           WHERE 1=1
         `;
 
-        const params: unknown[] = [];
-        let pIndex = 1;
+        const countClauses: string[] = ['1=1'];
+        const countParams: unknown[] = [];
+        let cpIndex = 1;
+
+        const dataParams: unknown[] = [];
+        let dpIndex = 1;
 
         if (options?.collected_by) {
-          sql += ` AND p.collected_by = $${pIndex}`;
-          params.push(options.collected_by);
-          pIndex++;
+          sql += ` AND p.collected_by = $${dpIndex}`;
+          dataParams.push(options.collected_by);
+          dpIndex++;
+
+          countClauses.push(`p.collected_by = $${cpIndex}`);
+          countParams.push(options.collected_by);
+          cpIndex++;
         }
 
         if (options?.customer_id) {
-          sql += ` AND p.customer_id = $${pIndex}`;
-          params.push(options.customer_id);
-          pIndex++;
+          sql += ` AND p.customer_id = $${dpIndex}`;
+          dataParams.push(options.customer_id);
+          dpIndex++;
+
+          countClauses.push(`p.customer_id = $${cpIndex}`);
+          countParams.push(options.customer_id);
+          cpIndex++;
         }
 
         if (options?.invoice_id) {
-          sql += ` AND p.invoice_id = $${pIndex}`;
-          params.push(options.invoice_id);
-          pIndex++;
+          sql += ` AND p.invoice_id = $${dpIndex}`;
+          dataParams.push(options.invoice_id);
+          dpIndex++;
+
+          countClauses.push(`p.invoice_id = $${cpIndex}`);
+          countParams.push(options.invoice_id);
+          cpIndex++;
         }
 
         if (options?.payment_method) {
-          sql += ` AND p.payment_method = $${pIndex}`;
-          params.push(options.payment_method);
-          pIndex++;
+          sql += ` AND p.payment_method = $${dpIndex}`;
+          dataParams.push(options.payment_method);
+          dpIndex++;
+
+          countClauses.push(`p.payment_method = $${cpIndex}`);
+          countParams.push(options.payment_method);
+          cpIndex++;
         }
 
         if (options?.start_date) {
-          sql += ` AND p.payment_date >= $${pIndex}`;
-          params.push(options.start_date);
-          pIndex++;
+          sql += ` AND p.payment_date >= $${dpIndex}`;
+          dataParams.push(options.start_date);
+          dpIndex++;
+
+          countClauses.push(`p.payment_date >= $${cpIndex}`);
+          countParams.push(options.start_date);
+          cpIndex++;
         }
 
         if (options?.end_date) {
-          sql += ` AND p.payment_date <= $${pIndex}`;
-          params.push(options.end_date);
-          pIndex++;
+          sql += ` AND p.payment_date <= $${dpIndex}`;
+          dataParams.push(options.end_date);
+          dpIndex++;
+
+          countClauses.push(`p.payment_date <= $${cpIndex}`);
+          countParams.push(options.end_date);
+          cpIndex++;
         }
 
         if (options?.search) {
-          sql += ` AND (LOWER(p.receipt_number) LIKE $${pIndex} OR LOWER(c.name) LIKE $${pIndex} OR LOWER(c.customer_code) LIKE $${pIndex})`;
-          params.push(`%${options.search.toLowerCase()}%`);
-          pIndex++;
+          const searchPattern = `%${options.search.trim().toLowerCase()}%`;
+          sql += ` AND (LOWER(p.receipt_number) LIKE $${dpIndex} OR LOWER(c.name) LIKE $${dpIndex} OR LOWER(c.customer_code) LIKE $${dpIndex})`;
+          dataParams.push(searchPattern);
+          dpIndex++;
+
+          countClauses.push(`(LOWER(p.receipt_number) LIKE $${cpIndex} OR LOWER(c.name) LIKE $${cpIndex} OR LOWER(c.customer_code) LIKE $${cpIndex})`);
+          countParams.push(searchPattern);
+          cpIndex++;
         }
 
         sql += ` ORDER BY p.payment_date DESC, p.id DESC`;
 
-        const page = options?.page || 1;
-        const limit = options?.limit || 50;
+        const page = Math.max(1, options?.page || 1);
+        const limit = Math.max(1, Math.min(200, options?.limit || 50));
         const offset = (page - 1) * limit;
 
-        sql += ` LIMIT $${pIndex} OFFSET $${pIndex + 1}`;
-        params.push(limit, offset);
+        sql += ` LIMIT $${dpIndex} OFFSET $${dpIndex + 1}`;
+        dataParams.push(limit, offset);
 
-        const res = await query<Payment>(sql, params);
-        return { data: res.rows, total: res.rows.length };
+        const res = await query<Payment>(sql, dataParams);
+
+        const countSql = `
+          SELECT COUNT(p.id) as total 
+          FROM payments p 
+          JOIN customers c ON p.customer_id = c.id 
+          WHERE ${countClauses.join(' AND ')}
+        `;
+        const countRes = await query<{ total: string }>(countSql, countParams);
+        const total = countRes.rows[0] ? parseInt(countRes.rows[0].total, 10) : res.rows.length;
+
+        return { data: res.rows, total };
       } catch (err) {
-        // Fallback
+        if (process.env.NODE_ENV === 'production') {
+          throw err;
+        }
       }
     }
 
@@ -107,7 +153,13 @@ export class PaymentRepository {
       return true;
     });
 
-    return { data: filtered, total: filtered.length };
+    const total = filtered.length;
+    const page = Math.max(1, options?.page || 1);
+    const limit = Math.max(1, Math.min(200, options?.limit || 50));
+    const offset = (page - 1) * limit;
+    const paginated = filtered.slice(offset, offset + limit);
+
+    return { data: paginated, total };
   }
 
   async findById(id: number): Promise<Payment | null> {
@@ -130,8 +182,10 @@ export class PaymentRepository {
         `;
         const res = await query<Payment>(sql, [id]);
         return res.rows[0] || null;
-      } catch {
-        // Fallback
+      } catch (err) {
+        if (process.env.NODE_ENV === 'production') {
+          throw err;
+        }
       }
     }
     return memoryPayments.find((p) => p.id === id) || null;
@@ -143,11 +197,29 @@ export class PaymentRepository {
       try {
         const res = await query<Payment>(`SELECT * FROM payments WHERE receipt_number = $1 LIMIT 1`, [receiptNumber]);
         return res.rows[0] || null;
-      } catch {
-        // Fallback
+      } catch (err) {
+        if (process.env.NODE_ENV === 'production') {
+          throw err;
+        }
       }
     }
     return memoryPayments.find((p) => p.receipt_number === receiptNumber) || null;
+  }
+
+  async findByIdempotencyKey(key: string): Promise<Payment | null> {
+    const { isConfigured } = validateDatabaseEnv();
+    if (isConfigured) {
+      try {
+        const res = await query<Payment>(`SELECT * FROM payments WHERE idempotency_key = $1 LIMIT 1`, [key]);
+        if (res.rows[0]) {
+          return this.findById(res.rows[0].id);
+        }
+      } catch {
+        // Idempotency check fallback
+      }
+    }
+    const memPmt = memoryPayments.find((p) => p.idempotency_key === key);
+    return memPmt ? { ...memPmt } : null;
   }
 
   /**
@@ -156,94 +228,149 @@ export class PaymentRepository {
   async create(input: CreatePaymentInput, createdBy?: number): Promise<Payment> {
     const receiptNumber = input.receipt_number || `RCT-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
     const paymentDate = input.payment_date || new Date().toISOString().split('T')[0];
-    const amount = Number(input.amount);
+    const amount = roundMoney(input.amount);
     const method = input.payment_method || 'CASH';
+
+    if (input.idempotency_key) {
+      const existing = await this.findByIdempotencyKey(input.idempotency_key);
+      if (existing) {
+        if (
+          existing.customer_id !== input.customer_id ||
+          roundMoney(existing.amount) !== roundMoney(amount)
+        ) {
+          throw new Error('IDEMPOTENCY_CONFLICT: Idempotency key reused with materially different payment data');
+        }
+        return existing;
+      }
+    }
 
     const { isConfigured } = validateDatabaseEnv();
 
     if (isConfigured) {
-      const client = await getClient();
       try {
-        await client.query('BEGIN');
+        return await withTransaction(async (client) => {
+          // 0. If invoice specified, lock invoice row and validate customer ownership
+          if (input.invoice_id) {
+            const invLock = await client.query<{ id: number; customer_id: number; total: string; payment_status: string }>(
+              `SELECT id, customer_id, total, payment_status FROM invoices WHERE id = $1 FOR UPDATE;`,
+              [input.invoice_id]
+            );
+            if (!invLock.rows[0]) {
+              throw new Error('INVOICE_NOT_FOUND: Invoice not found');
+            }
+            if (invLock.rows[0].customer_id !== input.customer_id) {
+              throw new Error('INVOICE_CUSTOMER_MISMATCH: Invoice does not belong to this customer');
+            }
+          }
 
-        // 1. Insert Payment
-        const pmtRes = await client.query<Payment>(
-          `INSERT INTO payments (
-            receipt_number, customer_id, invoice_id, payment_date,
-            amount, payment_method, collected_by, notes, created_by
-          ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9
-          ) RETURNING *;`,
-          [
-            receiptNumber,
-            input.customer_id,
-            input.invoice_id || null,
-            paymentDate,
-            amount,
-            method,
-            input.collected_by || null,
-            input.notes || null,
-            createdBy || null,
-          ]
-        );
+          // 1. Insert Payment
+          const pmtRes = await client.query<Payment>(
+            `INSERT INTO payments (
+              receipt_number, idempotency_key, customer_id, invoice_id, payment_date,
+              amount, payment_method, collected_by, notes, created_by
+            ) VALUES (
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+            ) RETURNING *;`,
+            [
+              receiptNumber,
+              input.idempotency_key || null,
+              input.customer_id,
+              input.invoice_id || null,
+              paymentDate,
+              amount,
+              method,
+              input.collected_by || null,
+              input.notes || null,
+              createdBy || null,
+            ]
+          );
 
-        const createdPayment = pmtRes.rows[0];
+          const createdPayment = pmtRes.rows[0];
 
-        // 2. Insert Account Transaction (Debit = 0, Credit = Payment Amount)
-        await client.query(
-          `INSERT INTO account_transactions (
-            customer_id, transaction_date, transaction_type,
-            reference_type, reference_id, description, debit, credit
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-          [
-            input.customer_id,
-            paymentDate,
-            'PAYMENT',
-            'PAYMENT',
-            createdPayment.id,
-            `سند قبض وتحصيل رقم ${receiptNumber}`,
-            0,
-            amount,
-          ]
-        );
-
-        // 3. Allocate Payment to Invoice if specified or automatically to unpaid invoices
-        if (input.invoice_id) {
+          // 2. Insert Account Transaction (Debit = 0, Credit = Payment Amount)
           await client.query(
-            `INSERT INTO payment_allocations (payment_id, invoice_id, amount) VALUES ($1, $2, $3);`,
-            [createdPayment.id, input.invoice_id, amount]
+            `INSERT INTO account_transactions (
+              customer_id, transaction_date, transaction_type,
+              reference_type, reference_id, description, debit, credit
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+            [
+              input.customer_id,
+              paymentDate,
+              'PAYMENT',
+              'PAYMENT',
+              createdPayment.id,
+              `سند قبض وتحصيل رقم ${receiptNumber}`,
+              0,
+              amount,
+            ]
           );
 
-          // Check if invoice is fully or partially paid
-          const invCheck = await client.query<{ total: string; paid: string }>(
-            `SELECT i.total, COALESCE(SUM(pa.amount), 0) as paid
-             FROM invoices i
-             LEFT JOIN payment_allocations pa ON pa.invoice_id = i.id
-             WHERE i.id = $1
-             GROUP BY i.id;`,
-            [input.invoice_id]
+          // 3. Allocate Payment to Invoice if specified
+          if (input.invoice_id) {
+            await client.query(
+              `INSERT INTO payment_allocations (payment_id, invoice_id, amount) VALUES ($1, $2, $3);`,
+              [createdPayment.id, input.invoice_id, amount]
+            );
+
+            // Authoritative recalculation of invoice status from payment_allocations
+            const invCheck = await client.query<{ total: string; paid: string }>(
+              `SELECT i.total, COALESCE(SUM(pa.amount), 0) as paid
+               FROM invoices i
+               LEFT JOIN payment_allocations pa ON pa.invoice_id = i.id
+               WHERE i.id = $1
+               GROUP BY i.id;`,
+              [input.invoice_id]
+            );
+
+            if (invCheck.rows[0]) {
+              const invTotal = Number(invCheck.rows[0].total);
+              const totalPaid = Number(invCheck.rows[0].paid);
+              const newStatus = totalPaid >= invTotal ? 'PAID' : totalPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+              await client.query(`UPDATE invoices SET payment_status = $1, updated_at = NOW() WHERE id = $2;`, [newStatus, input.invoice_id]);
+            }
+          }
+
+          // Fetch full joined payment record directly on this transaction connection
+          const fullRes = await client.query<Payment>(
+            `SELECT 
+              p.*,
+              c.name as customer_name,
+              c.customer_code,
+              i.invoice_number,
+              u.full_name as collected_by_name
+            FROM payments p
+            JOIN customers c ON p.customer_id = c.id
+            LEFT JOIN invoices i ON p.invoice_id = i.id
+            LEFT JOIN users u ON p.collected_by = u.id
+            WHERE p.id = $1;`,
+            [createdPayment.id]
           );
 
-          if (invCheck.rows[0]) {
-            const invTotal = Number(invCheck.rows[0].total);
-            const totalPaid = Number(invCheck.rows[0].paid);
-            const newStatus = totalPaid >= invTotal ? 'PAID' : totalPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
-            await client.query(`UPDATE invoices SET payment_status = $1 WHERE id = $2;`, [newStatus, input.invoice_id]);
+          return fullRes.rows[0] || createdPayment;
+        });
+      } catch (err: any) {
+        if (
+          input.idempotency_key &&
+          (err.code === '23505' ||
+            err.message?.toLowerCase().includes('idempotency') ||
+            err.message?.toLowerCase().includes('unique'))
+        ) {
+          const existing = await this.findByIdempotencyKey(input.idempotency_key);
+          if (existing) {
+            if (
+              existing.customer_id !== input.customer_id ||
+              roundMoney(existing.amount) !== roundMoney(amount)
+            ) {
+              throw new Error('IDEMPOTENCY_CONFLICT: Idempotency key reused with materially different payment data');
+            }
+            return existing;
           }
         }
-
-        await client.query('COMMIT');
-        client.release();
-
-        return createdPayment;
-      } catch (err) {
-        await client.query('ROLLBACK');
-        client.release();
         throw err;
       }
     }
 
-    // Memory Store
+    // In-memory Store for tests
     const newId = memoryPayments.length + 1;
     
     let customerName: string | undefined;
@@ -256,37 +383,41 @@ export class PaymentRepository {
       }
     }
 
-    // Determine default collector if not passed
     let effectiveCollectorId = input.collected_by || null;
+    let collectorName: string | undefined;
+
     if (!effectiveCollectorId && input.customer_id) {
-      const targetCust = memoryCustomers.find(c => c.id === input.customer_id);
-      if (targetCust && targetCust.assigned_employee_id) {
-        effectiveCollectorId = targetCust.assigned_employee_id;
-      } else if (createdBy) {
-        effectiveCollectorId = createdBy;
+      const cust = memoryCustomers.find(c => c.id === input.customer_id);
+      if (cust && cust.assigned_employee_id) {
+        effectiveCollectorId = cust.assigned_employee_id;
       }
     }
 
-    let collectedByName: string | undefined;
     if (effectiveCollectorId) {
       const emp = memoryUsers.find(u => u.id === effectiveCollectorId);
-      if (emp) {
-        collectedByName = emp.full_name;
-      }
+      if (emp) collectorName = emp.full_name;
+    }
+
+    let invNumber: string | undefined;
+    if (input.invoice_id) {
+      const inv = memoryInvoices.find(i => i.id === input.invoice_id);
+      if (inv) invNumber = inv.invoice_number;
     }
 
     const newPayment: Payment = {
       id: newId,
       receipt_number: receiptNumber,
+      idempotency_key: input.idempotency_key || null,
       customer_id: input.customer_id,
       customer_name: customerName,
       customer_code: customerCode,
       invoice_id: input.invoice_id || null,
+      invoice_number: invNumber,
       payment_date: paymentDate,
       amount,
       payment_method: method,
       collected_by: effectiveCollectorId,
-      collected_by_name: collectedByName,
+      collected_by_name: collectorName,
       notes: input.notes || null,
       created_by: createdBy || null,
       created_at: new Date().toISOString(),
@@ -295,7 +426,6 @@ export class PaymentRepository {
 
     memoryPayments.unshift(newPayment);
 
-    // Insert Account Transaction
     memoryAccountTransactions.push({
       id: memoryAccountTransactions.length + 1,
       customer_id: input.customer_id,
@@ -310,11 +440,22 @@ export class PaymentRepository {
     });
 
     if (input.invoice_id) {
-      const inv = memoryInvoices.find((i) => i.id === input.invoice_id);
-      if (inv) {
-        inv.paid_amount = (inv.paid_amount || 0) + amount;
-        inv.remaining_amount = Math.max(0, inv.total - inv.paid_amount);
-        inv.payment_status = inv.remaining_amount <= 0 ? 'PAID' : 'PARTIALLY_PAID';
+      const invIdx = memoryInvoices.findIndex((i) => i.id === input.invoice_id);
+      if (invIdx !== -1) {
+        const inv = memoryInvoices[invIdx];
+        const totalPaid = memoryPayments
+          .filter((p) => p.invoice_id === input.invoice_id)
+          .reduce((sum, p) => roundMoney(sum + p.amount), 0);
+
+        inv.paid_amount = totalPaid;
+        inv.remaining_amount = Math.max(0, roundMoney(inv.total - totalPaid));
+        if (totalPaid >= inv.total) {
+          inv.payment_status = 'PAID';
+        } else if (totalPaid > 0) {
+          inv.payment_status = 'PARTIALLY_PAID';
+        } else {
+          inv.payment_status = 'UNPAID';
+        }
       }
     }
 
@@ -324,41 +465,86 @@ export class PaymentRepository {
   async update(id: number, input: Partial<CreatePaymentInput>): Promise<Payment | null> {
     const { isConfigured } = validateDatabaseEnv();
     if (isConfigured) {
-      try {
-        const client = await getClient();
-        await client.query('BEGIN');
-        const existingRes = await client.query<Payment>('SELECT * FROM payments WHERE id = $1', [id]);
+      return withTransaction(async (client) => {
+        // 1. Lock payment row
+        const existingRes = await client.query<Payment>('SELECT * FROM payments WHERE id = $1 FOR UPDATE', [id]);
         if (!existingRes.rows[0]) {
-          await client.query('ROLLBACK');
-          client.release();
           return null;
         }
         const existing = existingRes.rows[0];
-        const newAmount = input.amount !== undefined ? Number(input.amount) : existing.amount;
+        const newAmount = input.amount !== undefined ? roundMoney(input.amount) : roundMoney(existing.amount);
         const newMethod = input.payment_method || existing.payment_method;
         const newDate = input.payment_date || existing.payment_date;
         const newNotes = input.notes !== undefined ? input.notes : existing.notes;
         const newCollector = input.collected_by !== undefined ? input.collected_by : existing.collected_by;
 
-        const updateRes = await client.query<Payment>(
+        if (newAmount <= 0) {
+          throw new Error('INVALID_AMOUNT: Payment amount must be positive');
+        }
+
+        // 2. Update payments table
+        await client.query(
           `UPDATE payments 
            SET amount = $1, payment_method = $2, payment_date = $3, notes = $4, collected_by = $5, updated_at = NOW()
-           WHERE id = $6 RETURNING *`,
+           WHERE id = $6`,
           [newAmount, newMethod, newDate, newNotes, newCollector, id]
         );
 
-        // Update account transaction
+        // 3. Update account_transactions ledger entry
         await client.query(
-          `UPDATE account_transactions SET credit = $1, transaction_date = $2 WHERE reference_type = 'PAYMENT' AND reference_id = $3`,
+          `UPDATE account_transactions 
+           SET credit = $1, transaction_date = $2 
+           WHERE reference_type = 'PAYMENT' AND reference_id = $3`,
           [newAmount, newDate, id]
         );
 
-        await client.query('COMMIT');
-        client.release();
-        return this.findById(id);
-      } catch (err) {
-        // Fallback
-      }
+        // 4. Update payment_allocations and recalculate invoice status if allocated
+        if (existing.invoice_id) {
+          const invRes = await client.query<{ id: number; total: string }>(
+            `SELECT id, total FROM invoices WHERE id = $1 FOR UPDATE`,
+            [existing.invoice_id]
+          );
+
+          if (invRes.rows[0]) {
+            await client.query(
+              `UPDATE payment_allocations SET amount = $1 WHERE payment_id = $2 AND invoice_id = $3`,
+              [newAmount, id, existing.invoice_id]
+            );
+
+            const allocSumRes = await client.query<{ paid: string }>(
+              `SELECT COALESCE(SUM(amount), 0) as paid FROM payment_allocations WHERE invoice_id = $1`,
+              [existing.invoice_id]
+            );
+
+            const totalPaid = Number(allocSumRes.rows[0]?.paid || 0);
+            const invTotal = Number(invRes.rows[0].total);
+            const newStatus = totalPaid >= invTotal ? 'PAID' : totalPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+
+            await client.query(
+              `UPDATE invoices SET payment_status = $1, updated_at = NOW() WHERE id = $2`,
+              [newStatus, existing.invoice_id]
+            );
+          }
+        }
+
+        // 5. Fetch and return directly on this transaction client
+        const updatedRes = await client.query<Payment>(
+          `SELECT 
+            p.*,
+            c.name as customer_name,
+            c.customer_code,
+            i.invoice_number,
+            u.full_name as collected_by_name
+          FROM payments p
+          JOIN customers c ON p.customer_id = c.id
+          LEFT JOIN invoices i ON p.invoice_id = i.id
+          LEFT JOIN users u ON p.collected_by = u.id
+          WHERE p.id = $1`,
+          [id]
+        );
+
+        return updatedRes.rows[0] || null;
+      });
     }
 
     const pmtIdx = memoryPayments.findIndex((p) => p.id === id);
@@ -366,41 +552,49 @@ export class PaymentRepository {
     const existing = memoryPayments[pmtIdx];
 
     const oldAmount = existing.amount;
-    const newAmount = input.amount !== undefined ? Number(input.amount) : oldAmount;
+    const newAmount = input.amount !== undefined ? roundMoney(input.amount) : oldAmount;
+    const newDate = input.payment_date || existing.payment_date;
     
-    let collName = existing.collected_by_name;
+    let collectorName = existing.collected_by_name;
     if (input.collected_by) {
       const emp = memoryUsers.find((u) => u.id === input.collected_by);
-      if (emp) collName = emp.full_name;
+      if (emp) collectorName = emp.full_name;
     }
 
     const updatedPmt: Payment = {
       ...existing,
       amount: newAmount,
       payment_method: input.payment_method || existing.payment_method,
-      payment_date: input.payment_date || existing.payment_date,
+      payment_date: newDate,
       notes: input.notes !== undefined ? input.notes : existing.notes,
       collected_by: input.collected_by !== undefined ? input.collected_by : existing.collected_by,
-      collected_by_name: collName,
+      collected_by_name: collectorName,
       updated_at: new Date().toISOString(),
     };
 
     memoryPayments[pmtIdx] = updatedPmt;
 
-    // Update account transaction in memory
-    const tx = memoryAccountTransactions.find(t => t.reference_type === 'PAYMENT' && t.reference_id === id);
-    if (tx) {
-      tx.credit = newAmount;
-      tx.transaction_date = updatedPmt.payment_date;
+    // Update memoryAccountTransactions
+    const txIdx = memoryAccountTransactions.findIndex(
+      (t) => t.reference_type === 'PAYMENT' && t.reference_id === id
+    );
+    if (txIdx !== -1) {
+      memoryAccountTransactions[txIdx].credit = newAmount;
+      memoryAccountTransactions[txIdx].transaction_date = newDate;
     }
 
-    // Update invoice status if linked
+    // Update memoryInvoices if invoice_id is present
     if (existing.invoice_id) {
-      const inv = memoryInvoices.find(i => i.id === existing.invoice_id);
-      if (inv) {
-        inv.paid_amount = Math.max(0, (inv.paid_amount || 0) - oldAmount + newAmount);
-        inv.remaining_amount = Math.max(0, inv.total - inv.paid_amount);
-        inv.payment_status = inv.remaining_amount <= 0 ? 'PAID' : inv.paid_amount > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+      const invIdx = memoryInvoices.findIndex((i) => i.id === existing.invoice_id);
+      if (invIdx !== -1) {
+        const inv = memoryInvoices[invIdx];
+        const totalPaid = memoryPayments
+          .filter((p) => p.invoice_id === existing.invoice_id)
+          .reduce((sum, p) => roundMoney(sum + p.amount), 0);
+
+        inv.paid_amount = totalPaid;
+        inv.remaining_amount = Math.max(0, roundMoney(inv.total - totalPaid));
+        inv.payment_status = totalPaid >= inv.total ? 'PAID' : totalPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
       }
     }
 
@@ -410,70 +604,63 @@ export class PaymentRepository {
   async delete(id: number): Promise<boolean> {
     const { isConfigured } = validateDatabaseEnv();
     if (isConfigured) {
-      try {
-        const client = await getClient();
-        await client.query('BEGIN');
-        const pmtRes = await client.query<Payment>('SELECT * FROM payments WHERE id = $1', [id]);
-        if (!pmtRes.rows[0]) {
-          await client.query('ROLLBACK');
-          client.release();
-          return false;
-        }
+      return withTransaction(async (client) => {
+        const pmtRes = await client.query<Payment>('SELECT * FROM payments WHERE id = $1 FOR UPDATE', [id]);
+        if (!pmtRes.rows[0]) return false;
         const pmt = pmtRes.rows[0];
 
-        // 1. Delete payment allocations and recalculate invoice
         if (pmt.invoice_id) {
-          await client.query('DELETE FROM payment_allocations WHERE payment_id = $1', [id]);
-          const invCheck = await client.query<{ total: string; paid: string }>(
-            `SELECT i.total, COALESCE(SUM(pa.amount), 0) as paid
-             FROM invoices i
-             LEFT JOIN payment_allocations pa ON pa.invoice_id = i.id
-             WHERE i.id = $1
-             GROUP BY i.id;`,
+          const invRes = await client.query<{ id: number; total: string }>(
+            `SELECT id, total FROM invoices WHERE id = $1 FOR UPDATE`,
             [pmt.invoice_id]
           );
-          if (invCheck.rows[0]) {
-            const invTotal = Number(invCheck.rows[0].total);
-            const totalPaid = Number(invCheck.rows[0].paid);
+
+          await client.query('DELETE FROM payment_allocations WHERE payment_id = $1', [id]);
+
+          const allocSumRes = await client.query<{ paid: string }>(
+            `SELECT COALESCE(SUM(amount), 0) as paid FROM payment_allocations WHERE invoice_id = $1`,
+            [pmt.invoice_id]
+          );
+
+          if (invRes.rows[0]) {
+            const invTotal = Number(invRes.rows[0].total);
+            const totalPaid = Number(allocSumRes.rows[0]?.paid || 0);
             const newStatus = totalPaid >= invTotal ? 'PAID' : totalPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
-            await client.query(`UPDATE invoices SET payment_status = $1 WHERE id = $2;`, [newStatus, pmt.invoice_id]);
+            await client.query(`UPDATE invoices SET payment_status = $1, updated_at = NOW() WHERE id = $2;`, [newStatus, pmt.invoice_id]);
           }
         }
 
-        // 2. Delete account transactions
         await client.query(`DELETE FROM account_transactions WHERE reference_type = 'PAYMENT' AND reference_id = $1`, [id]);
+        const res = await client.query('DELETE FROM payments WHERE id = $1', [id]);
 
-        // 3. Delete payment
-        await client.query('DELETE FROM payments WHERE id = $1', [id]);
-
-        await client.query('COMMIT');
-        client.release();
-        return true;
-      } catch (err) {
-        // Fallback
-      }
+        return (res.rowCount ?? 0) > 0;
+      });
     }
 
-    const idx = memoryPayments.findIndex((p) => p.id === id);
-    if (idx === -1) return false;
-    const pmt = memoryPayments[idx];
+    const pmtIdx = memoryPayments.findIndex((p) => p.id === id);
+    if (pmtIdx === -1) return false;
+    const pmt = memoryPayments[pmtIdx];
 
-    // Remove from memoryPayments
-    memoryPayments.splice(idx, 1);
+    memoryPayments.splice(pmtIdx, 1);
 
-    // Remove corresponding account transaction
-    const txIdx = memoryAccountTransactions.findIndex(t => t.reference_type === 'PAYMENT' && t.reference_id === id);
+    const txIdx = memoryAccountTransactions.findIndex(
+      (t) => t.reference_type === 'PAYMENT' && t.reference_id === id
+    );
     if (txIdx !== -1) {
       memoryAccountTransactions.splice(txIdx, 1);
     }
 
-    // Revert invoice paid amount
     if (pmt.invoice_id) {
-      const inv = memoryInvoices.find(i => i.id === pmt.invoice_id);
-      if (inv) {
-        inv.paid_amount = Math.max(0, (inv.paid_amount || 0) - pmt.amount);
-        inv.remaining_amount = Math.max(0, inv.total - inv.paid_amount);
-        inv.payment_status = inv.remaining_amount <= 0 ? 'PAID' : inv.paid_amount > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+      const invIdx = memoryInvoices.findIndex((i) => i.id === pmt.invoice_id);
+      if (invIdx !== -1) {
+        const inv = memoryInvoices[invIdx];
+        const totalPaid = memoryPayments
+          .filter((p) => p.invoice_id === pmt.invoice_id)
+          .reduce((sum, p) => roundMoney(sum + p.amount), 0);
+
+        inv.paid_amount = totalPaid;
+        inv.remaining_amount = Math.max(0, roundMoney(inv.total - totalPaid));
+        inv.payment_status = totalPaid >= inv.total ? 'PAID' : totalPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
       }
     }
 
