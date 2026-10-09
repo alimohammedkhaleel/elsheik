@@ -22,10 +22,11 @@ export class DashboardRepository {
 
     if (isConfigured) {
       try {
-        const isFiltered = actor && (actor.role === 'EMPLOYEE' || actor.role === 'COLLECTOR');
+        const isCollector = actor?.role === 'COLLECTOR';
+        const isEmployee = actor?.role === 'EMPLOYEE';
+        const isFiltered = actor && (isEmployee || isCollector);
 
         if (isFiltered) {
-          // Single consolidated query for filtered view — avoids 5 round-trips
           const res = await query<{
             total_customers: string;
             active_customers: string;
@@ -34,25 +35,70 @@ export class DashboardRepository {
             outstanding_balance: string;
             pending_approvals: string;
           }>(
-            `SELECT
-               (SELECT COUNT(*) FROM customers WHERE assigned_employee_id = $1) AS total_customers,
-               (SELECT COUNT(*) FROM customers WHERE assigned_employee_id = $1 AND status = 'ACTIVE') AS active_customers,
-               (SELECT COALESCE(SUM(total), 0) FROM invoices WHERE employee_id = $1) AS total_sales,
-               (SELECT COALESCE(SUM(p.amount), 0)
-                FROM payments p
-                WHERE p.customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1)
-               ) AS total_collections,
-               (SELECT COALESCE(SUM(i.total - COALESCE(pa.paid, 0)), 0)
-                FROM invoices i
-                LEFT JOIN (
-                  SELECT invoice_id, SUM(amount) AS paid
-                  FROM payment_allocations
-                  GROUP BY invoice_id
-                ) pa ON pa.invoice_id = i.id
-                WHERE i.employee_id = $1
-                  AND i.payment_status <> 'PAID'
-               ) AS outstanding_balance,
-               (SELECT COUNT(*) FROM approval_records WHERE status = 'PENDING') AS pending_approvals`,
+            isCollector
+              ? `SELECT
+                   CASE 
+                     WHEN (SELECT COUNT(*) FROM customers WHERE assigned_employee_id = $1) > 0 
+                       THEN (SELECT COUNT(*) FROM customers WHERE assigned_employee_id = $1)
+                     ELSE (SELECT COUNT(*) FROM customers)
+                   END AS total_customers,
+                   CASE 
+                     WHEN (SELECT COUNT(*) FROM customers WHERE assigned_employee_id = $1 AND status = 'ACTIVE') > 0 
+                       THEN (SELECT COUNT(*) FROM customers WHERE assigned_employee_id = $1 AND status = 'ACTIVE')
+                     ELSE (SELECT COUNT(*) FROM customers WHERE status = 'ACTIVE')
+                   END AS active_customers,
+                   (SELECT COALESCE(SUM(total), 0) 
+                    FROM invoices 
+                    WHERE employee_id = $1 
+                       OR customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1)
+                   ) AS total_sales,
+                   (SELECT COALESCE(SUM(p.amount), 0)
+                    FROM payments p
+                    WHERE p.collected_by = $1
+                       OR p.customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1)
+                   ) AS total_collections,
+                   (SELECT COALESCE(SUM(i.total - COALESCE(pa.paid, 0)), 0)
+                    FROM invoices i
+                    LEFT JOIN (
+                      SELECT invoice_id, SUM(amount) AS paid 
+                      FROM payment_allocations 
+                      GROUP BY invoice_id
+                    ) pa ON pa.invoice_id = i.id
+                    WHERE (
+                      i.employee_id = $1 
+                      OR i.customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1)
+                      OR (SELECT COUNT(*) FROM customers WHERE assigned_employee_id = $1) = 0
+                    )
+                    AND i.payment_status <> 'PAID'
+                   ) AS outstanding_balance,
+                   (SELECT COUNT(*) FROM approval_records WHERE status = 'PENDING') AS pending_approvals`
+              : `SELECT
+                   (SELECT COUNT(*) FROM customers WHERE assigned_employee_id = $1) AS total_customers,
+                   (SELECT COUNT(*) FROM customers WHERE assigned_employee_id = $1 AND status = 'ACTIVE') AS active_customers,
+                   (SELECT COALESCE(SUM(total), 0) 
+                    FROM invoices 
+                    WHERE employee_id = $1 
+                       OR customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1)
+                   ) AS total_sales,
+                   (SELECT COALESCE(SUM(p.amount), 0)
+                    FROM payments p
+                    WHERE p.collected_by = $1
+                       OR p.customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1)
+                   ) AS total_collections,
+                   (SELECT COALESCE(SUM(i.total - COALESCE(pa.paid, 0)), 0)
+                    FROM invoices i
+                    LEFT JOIN (
+                      SELECT invoice_id, SUM(amount) AS paid 
+                      FROM payment_allocations 
+                      GROUP BY invoice_id
+                    ) pa ON pa.invoice_id = i.id
+                    WHERE (
+                      i.employee_id = $1 
+                      OR i.customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1)
+                    )
+                    AND i.payment_status <> 'PAID'
+                   ) AS outstanding_balance,
+                   (SELECT COUNT(*) FROM approval_records WHERE status = 'PENDING') AS pending_approvals`,
             [actor!.userId]
           );
 
@@ -134,31 +180,30 @@ export class DashboardRepository {
 
     if (isConfigured) {
       try {
-        const isFiltered = actor && (actor.role === 'EMPLOYEE' || actor.role === 'COLLECTOR');
+        const isCollector = actor?.role === 'COLLECTOR';
+        const isFiltered = actor && (actor.role === 'EMPLOYEE' || isCollector);
 
-        /**
-         * Optimised query:
-         *  - Uses CTE `inv_agg` to aggregate invoices once (uses idx_invoices_employee_date or idx_invoices_customer_date)
-         *  - Uses CTE `bal_agg` to aggregate payment_allocations once (uses idx_pa_invoice_amount)
-         *  - Final join is between two small result sets instead of raw tables
-         */
         const sql = isFiltered
           ? `
               WITH inv_agg AS (
                 SELECT
-                  customer_id,
-                  COALESCE(SUM(total), 0)::numeric          AS total_sales,
-                  COUNT(*)::int                              AS invoice_count,
-                  COALESCE(AVG(total), 0)::numeric          AS avg_invoice,
-                  COALESCE(SUM(total - COALESCE(pa.paid,0)), 0)::numeric AS current_balance
+                  i.customer_id,
+                  COALESCE(SUM(i.total), 0)::numeric          AS total_sales,
+                  COUNT(i.id)::int                              AS invoice_count,
+                  COALESCE(AVG(i.total), 0)::numeric          AS avg_invoice,
+                  COALESCE(SUM(i.total - COALESCE(pa.paid,0)), 0)::numeric AS current_balance
                 FROM invoices i
                 LEFT JOIN (
                   SELECT invoice_id, SUM(amount) AS paid
                   FROM payment_allocations
                   GROUP BY invoice_id
                 ) pa ON pa.invoice_id = i.id
-                WHERE i.employee_id = $1
-                GROUP BY customer_id
+                WHERE (
+                  i.employee_id = $1
+                  OR i.customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1)
+                  OR ($2 = true AND (SELECT COUNT(*) FROM customers WHERE assigned_employee_id = $1) = 0)
+                )
+                GROUP BY i.customer_id
               )
               SELECT
                 c.id           AS customer_id,
@@ -205,7 +250,7 @@ export class DashboardRepository {
               ORDER BY a.total_sales DESC
               LIMIT 5;`;
 
-        const params = isFiltered ? [actor!.userId] : [];
+        const params = isFiltered ? [actor!.userId, isCollector] : [];
         const res = await query<TopBuyerCustomer>(sql, params);
         return res.rows;
       } catch (err) {
