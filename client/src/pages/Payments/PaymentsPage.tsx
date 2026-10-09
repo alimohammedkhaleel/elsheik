@@ -128,15 +128,31 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
       try {
         const res = await invoiceService.getInvoices({
           customer_id: parseInt(custIdStr, 10),
-          payment_status: 'UNPAID',
+          limit: 100,
         });
-        setCustomerInvoices(res.data || []);
+        const openInvoices = (res.data || []).filter(
+          (inv: Invoice) => inv.payment_status !== 'PAID' && (inv.remaining_amount === undefined || Number(inv.remaining_amount) > 0)
+        );
+        setCustomerInvoices(openInvoices);
       } catch {
         setCustomerInvoices([]);
       }
     } else {
       setCustomerInvoices([]);
       setNewCollectorId('');
+    }
+  };
+
+  const handleInvoiceSelect = (invIdStr: string) => {
+    setNewInvoiceId(invIdStr);
+    if (invIdStr) {
+      const found = customerInvoices.find((i) => i.id === parseInt(invIdStr, 10));
+      if (found) {
+        const rem = found.remaining_amount !== undefined ? Number(found.remaining_amount) : Number(found.total);
+        if (rem > 0 && (!newAmount || newAmount === 0)) {
+          setNewAmount(rem);
+        }
+      }
     }
   };
 
@@ -497,7 +513,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
                   <select
                     className="sheikh-select"
                     value={newInvoiceId}
-                    onChange={(e) => setNewInvoiceId(e.target.value)}
+                    onChange={(e) => handleInvoiceSelect(e.target.value)}
                   >
                     <option value="">سداد عام على الحساب (بدون فاتورة محددة)</option>
                     {customerInvoices.map((inv) => (

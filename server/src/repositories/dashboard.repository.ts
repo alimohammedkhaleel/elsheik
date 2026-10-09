@@ -22,58 +22,68 @@ export class DashboardRepository {
 
     if (isConfigured) {
       try {
-        let custFilter = '';
-        let invFilter = '';
-        let pmtFilter = '';
-        let txFilter = '';
+        const isFiltered = actor && (actor.role === 'EMPLOYEE' || actor.role === 'COLLECTOR');
 
-        if (actor && (actor.role === 'EMPLOYEE' || actor.role === 'COLLECTOR')) {
-          custFilter = `WHERE assigned_employee_id = ${actor.userId}`;
-          invFilter = `WHERE customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = ${actor.userId})`;
-          pmtFilter = `WHERE customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = ${actor.userId})`;
-          txFilter = `WHERE customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = ${actor.userId})`;
-        }
+        // All queries parameterized — no string interpolation for actor.userId
+        const [custResult, invResult, pmtResult, txResult, appResult] = await Promise.all([
+          isFiltered
+            ? query<{ total: string; active: string }>(
+                `SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'ACTIVE') as active
+                 FROM customers WHERE assigned_employee_id = $1;`,
+                [actor!.userId]
+              )
+            : query<{ total: string; active: string }>(
+                `SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'ACTIVE') as active FROM customers;`
+              ),
 
-        const custResult = await query<{ total: string; active: string }>(`
-          SELECT 
-            COUNT(*) as total,
-            COUNT(*) FILTER (WHERE status = 'ACTIVE') as active
-          FROM customers ${custFilter};
-        `);
+          isFiltered
+            ? query<{ total_sales: string }>(
+                `SELECT COALESCE(SUM(total), 0) as total_sales 
+                 FROM invoices 
+                 WHERE customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1);`,
+                [actor!.userId]
+              )
+            : query<{ total_sales: string }>(
+                `SELECT COALESCE(SUM(total), 0) as total_sales FROM invoices;`
+              ),
 
-        const invResult = await query<{ total_sales: string }>(`
-          SELECT COALESCE(SUM(total), 0) as total_sales FROM invoices ${invFilter};
-        `);
+          isFiltered
+            ? query<{ total_payments: string }>(
+                `SELECT COALESCE(SUM(amount), 0) as total_payments 
+                 FROM payments 
+                 WHERE customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1);`,
+                [actor!.userId]
+              )
+            : query<{ total_payments: string }>(
+                `SELECT COALESCE(SUM(amount), 0) as total_payments FROM payments;`
+              ),
 
-        const pmtResult = await query<{ total_payments: string }>(`
-          SELECT COALESCE(SUM(amount), 0) as total_payments FROM payments ${pmtFilter};
-        `);
+          isFiltered
+            ? query<{ balance: string }>(
+                `SELECT COALESCE(SUM(debit) - SUM(credit), 0) as balance 
+                 FROM account_transactions 
+                 WHERE customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1);`,
+                [actor!.userId]
+              )
+            : query<{ balance: string }>(
+                `SELECT COALESCE(SUM(debit) - SUM(credit), 0) as balance FROM account_transactions;`
+              ),
 
-        const txResult = await query<{ balance: string }>(`
-          SELECT COALESCE(SUM(debit) - SUM(credit), 0) as balance FROM account_transactions ${txFilter};
-        `);
-
-        const appResult = await query<{ pending: string }>(`
-          SELECT COUNT(*) as pending FROM approval_records WHERE status = 'PENDING';
-        `);
-
-        const totalCustomers = parseInt(custResult.rows[0]?.total || '0', 10);
-        const activeCustomers = parseInt(custResult.rows[0]?.active || '0', 10);
-        const totalSales = parseFloat(invResult.rows[0]?.total_sales || '0');
-        const totalCollections = parseFloat(pmtResult.rows[0]?.total_payments || '0');
-        const totalOutstandingBalance = parseFloat(txResult.rows[0]?.balance || '0');
-        const pendingApprovalsCount = parseInt(appResult.rows[0]?.pending || '0', 10);
+          query<{ pending: string }>(
+            `SELECT COUNT(*) as pending FROM approval_records WHERE status = 'PENDING';`
+          ),
+        ]);
 
         return {
-          totalCustomers,
-          activeCustomers,
-          totalSales,
-          totalCollections,
-          totalOutstandingBalance,
-          pendingApprovalsCount,
+          totalCustomers: parseInt(custResult.rows[0]?.total || '0', 10),
+          activeCustomers: parseInt(custResult.rows[0]?.active || '0', 10),
+          totalSales: parseFloat(invResult.rows[0]?.total_sales || '0'),
+          totalCollections: parseFloat(pmtResult.rows[0]?.total_payments || '0'),
+          totalOutstandingBalance: parseFloat(txResult.rows[0]?.balance || '0'),
+          pendingApprovalsCount: parseInt(appResult.rows[0]?.pending || '0', 10),
         };
       } catch (err) {
-        // Fallback
+        // Fallback to memory
       }
     }
 
@@ -81,19 +91,13 @@ export class DashboardRepository {
     const approvals = await approvalRepository.findAll('PENDING');
 
     let totalSales = 0;
-    for (const inv of memoryInvoices) {
-      totalSales += inv.total;
-    }
+    for (const inv of memoryInvoices) { totalSales += inv.total; }
 
     let totalCollections = 0;
-    for (const pmt of memoryPayments) {
-      totalCollections += pmt.amount;
-    }
+    for (const pmt of memoryPayments) { totalCollections += pmt.amount; }
 
     let totalBalance = 0;
-    for (const tx of memoryAccountTransactions) {
-      totalBalance += tx.debit - tx.credit;
-    }
+    for (const tx of memoryAccountTransactions) { totalBalance += tx.debit - tx.credit; }
 
     return {
       totalCustomers: custData.total,
@@ -110,12 +114,10 @@ export class DashboardRepository {
 
     if (isConfigured) {
       try {
-        let filter = '';
-        if (actor && (actor.role === 'EMPLOYEE' || actor.role === 'COLLECTOR')) {
-          filter = `AND c.assigned_employee_id = ${actor.userId}`;
-        }
+        const isFiltered = actor && (actor.role === 'EMPLOYEE' || actor.role === 'COLLECTOR');
 
-        const sql = `
+        // Parameterized query only — actor.userId is $1, never interpolated
+        const baseSql = `
           SELECT 
             c.id as customer_id,
             c.customer_code,
@@ -133,12 +135,22 @@ export class DashboardRepository {
             FROM account_transactions
             GROUP BY customer_id
           ) tx ON tx.customer_id = c.id
-          WHERE 1=1 ${filter}
-          GROUP BY c.id, c.customer_code, c.name, c.trade_name, c.phone, tx.balance
-          ORDER BY total_sales DESC
-          LIMIT 5;
         `;
-        const res = await query<TopBuyerCustomer>(sql);
+
+        const res = isFiltered
+          ? await query<TopBuyerCustomer>(
+              baseSql + `
+              WHERE c.assigned_employee_id = $1
+              GROUP BY c.id, c.customer_code, c.name, c.trade_name, c.phone, tx.balance
+              ORDER BY total_sales DESC LIMIT 5;`,
+              [actor!.userId]
+            )
+          : await query<TopBuyerCustomer>(
+              baseSql + `
+              GROUP BY c.id, c.customer_code, c.name, c.trade_name, c.phone, tx.balance
+              ORDER BY total_sales DESC LIMIT 5;`
+            );
+
         return res.rows;
       } catch (err) {
         // Fallback

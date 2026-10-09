@@ -26,7 +26,7 @@ function getDateBounds(period?: LeaderboardPeriod, customStart?: string, customE
     case 'week': {
       const d = new Date(now);
       const day = d.getDay();
-      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday/Saturday start
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
       const startOfWeek = new Date(d.setDate(diff));
       return { start: startOfWeek.toISOString().split('T')[0], end: todayStr };
     }
@@ -54,6 +54,15 @@ export class LeaderboardService {
 
     if (isConfigured) {
       try {
+        const sortColMap: Record<string, string> = {
+          invoices: 'invoice_count',
+          collections: 'collections',
+          avg_invoice: 'avg_invoice',
+          sales: 'sales',
+        };
+        const sortCol = sortColMap[options?.sort_by || 'sales'] || 'sales';
+
+        // Fully parameterized — no string interpolation
         const sql = `
           SELECT 
             c.id as customer_id,
@@ -61,21 +70,31 @@ export class LeaderboardService {
             c.name as customer_name,
             c.trade_name,
             c.city,
-            COALESCE(SUM(i.total), 0) as sales,
-            COUNT(i.id) as invoice_count,
-            CASE WHEN COUNT(i.id) > 0 THEN COALESCE(SUM(i.total), 0) / COUNT(i.id) ELSE 0 END as avg_invoice,
-            COALESCE(p.total_paid, 0) as collections,
-            COALESCE(c.credit_limit, 0) as current_balance
+            COALESCE(SUM(i.total), 0)::numeric as sales,
+            COUNT(i.id)::int as invoice_count,
+            CASE WHEN COUNT(i.id) > 0 
+              THEN (COALESCE(SUM(i.total), 0) / COUNT(i.id)) 
+              ELSE 0 
+            END::numeric as avg_invoice,
+            COALESCE(p.total_paid, 0)::numeric as collections,
+            COALESCE(tx.balance, 0)::numeric as current_balance
           FROM customers c
-          LEFT JOIN invoices i ON c.id = i.customer_id AND i.invoice_date BETWEEN $1 AND $2
+          LEFT JOIN invoices i 
+            ON c.id = i.customer_id 
+            AND i.invoice_date BETWEEN $1 AND $2
           LEFT JOIN (
             SELECT customer_id, SUM(amount) as total_paid
             FROM payments
             WHERE payment_date BETWEEN $1 AND $2
             GROUP BY customer_id
           ) p ON c.id = p.customer_id
-          GROUP BY c.id, c.customer_code, c.name, c.trade_name, c.city, p.total_paid, c.credit_limit
-          ORDER BY sales DESC
+          LEFT JOIN (
+            SELECT customer_id, COALESCE(SUM(debit) - SUM(credit), 0) as balance
+            FROM account_transactions
+            GROUP BY customer_id
+          ) tx ON tx.customer_id = c.id
+          GROUP BY c.id, c.customer_code, c.name, c.trade_name, c.city, p.total_paid, tx.balance
+          ORDER BY ${sortCol} DESC
           LIMIT $3;
         `;
         const limit = options?.limit || 20;
@@ -83,7 +102,7 @@ export class LeaderboardService {
 
         return result.rows.map((row: any, idx: number) => ({
           rank: idx + 1,
-          customer_id: row.customer_id,
+          customer_id: Number(row.customer_id),
           customer_code: row.customer_code,
           customer_name: row.customer_name,
           trade_name: row.trade_name,
@@ -95,11 +114,11 @@ export class LeaderboardService {
           current_balance: Number(row.current_balance),
         }));
       } catch (err) {
-        // Fallback to memory
+        console.error('[Leaderboard] getTopCustomers DB error:', err);
       }
     }
 
-    // Memory calculation
+    // Memory fallback
     const customersRes = await customerRepository.findAll();
     const allInvoicesRes = await invoiceRepository.findAll();
     const allPaymentsRes = await paymentRepository.findAll();
@@ -135,7 +154,6 @@ export class LeaderboardService {
       };
     });
 
-    // Sort by requested criterion
     const sortBy = options?.sort_by || 'sales';
     customerStats.sort((a, b) => {
       if (sortBy === 'invoices') return b.invoice_count - a.invoice_count;
@@ -153,7 +171,72 @@ export class LeaderboardService {
 
   async getTopRepresentatives(options?: LeaderboardFilterOptions): Promise<TopRepresentativeLeaderboardItem[]> {
     const { start, end } = getDateBounds(options?.period, options?.start_date, options?.end_date);
+    const { isConfigured } = validateDatabaseEnv();
 
+    if (isConfigured) {
+      try {
+        const limit = options?.limit || 20;
+        // Fully parameterized DB query — no string interpolation
+        // Handles both EMPLOYEE (sales) and COLLECTOR (collections) roles
+        const sql = `
+          SELECT
+            u.id as representative_id,
+            u.full_name as representative_name,
+            u.job_title,
+            COUNT(DISTINCT c.id)::int as assigned_customers,
+            COALESCE(SUM(i.total), 0)::numeric as total_sales,
+            COUNT(DISTINCT i.id)::int as invoice_count,
+            COALESCE(p.total_collections, 0)::numeric as total_collections,
+            CASE 
+              WHEN COALESCE(SUM(i.total), 0) > 0 
+              THEN LEAST(100, ROUND(
+                (COALESCE(p.total_collections, 0) / COALESCE(SUM(i.total), 0)) * 100,
+                1
+              ))
+              ELSE 100
+            END::numeric as collection_rate
+          FROM users u
+          LEFT JOIN customers c 
+            ON c.assigned_employee_id = u.id 
+            AND c.status = 'ACTIVE'
+          LEFT JOIN invoices i 
+            ON i.employee_id = u.id 
+            AND i.invoice_date BETWEEN $1 AND $2
+          LEFT JOIN (
+            SELECT collected_by, SUM(amount) as total_collections
+            FROM payments
+            WHERE payment_date BETWEEN $1 AND $2
+              AND collected_by IS NOT NULL
+            GROUP BY collected_by
+          ) p ON p.collected_by = u.id
+          WHERE u.role_code IN ('EMPLOYEE', 'COLLECTOR') 
+            AND u.status = 'ACTIVE'
+          GROUP BY u.id, u.full_name, u.job_title, p.total_collections
+          ORDER BY total_sales DESC, total_collections DESC
+          LIMIT $3;
+        `;
+
+        const result = await query(sql, [start, end, limit]);
+
+        return result.rows.map((row: any, idx: number) => ({
+          rank: idx + 1,
+          representative_id: Number(row.representative_id),
+          representative_name: row.representative_name,
+          job_title: row.job_title || 'مندوب مبيعات',
+          assigned_customers: Number(row.assigned_customers),
+          total_sales: Number(row.total_sales),
+          invoice_count: Number(row.invoice_count),
+          total_collections: Number(row.total_collections),
+          collection_rate: Number(row.collection_rate),
+          visits_count: 0,
+          followups_count: 0,
+        }));
+      } catch (err) {
+        console.error('[Leaderboard] getTopRepresentatives DB error:', err);
+      }
+    }
+
+    // Memory fallback
     const users = await userRepository.findAll({ role: 'EMPLOYEE' });
     const collectors = await userRepository.findAll({ role: 'COLLECTOR' });
     const reps = [...users, ...collectors];
@@ -167,14 +250,10 @@ export class LeaderboardService {
     const payments = paymentsRes.data;
 
     const repStats = reps.map((rep) => {
-      const assignedCusts = customers.filter(
-        (c) => c.assigned_employee_id === rep.id || c.accountant_id === rep.id || c.follow_up_employee_id === rep.id
-      );
-
+      const assignedCusts = customers.filter((c) => c.assigned_employee_id === rep.id);
       const repInvoices = invoices.filter(
         (inv) => inv.employee_id === rep.id && inv.invoice_date >= start && inv.invoice_date <= end
       );
-
       const repPayments = payments.filter(
         (p) => p.collected_by === rep.id && p.payment_date >= start && p.payment_date <= end
       );
@@ -182,9 +261,7 @@ export class LeaderboardService {
       const totalSales = repInvoices.reduce((acc, inv) => acc + Number(inv.total), 0);
       const invoiceCount = repInvoices.length;
       const totalCollections = repPayments.reduce((acc, p) => acc + Number(p.amount), 0);
-
       const collectionRate = totalSales > 0 ? Math.min(100, (totalCollections / totalSales) * 100) : 100;
-
 
       return {
         representative_id: rep.id,
@@ -195,13 +272,12 @@ export class LeaderboardService {
         invoice_count: invoiceCount,
         total_collections: totalCollections,
         collection_rate: Number(collectionRate.toFixed(1)),
-        visits_count: Math.floor(assignedCusts.length * 3 + invoiceCount),
-        followups_count: Math.floor(assignedCusts.length * 2),
+        visits_count: 0,
+        followups_count: 0,
       };
     });
 
-    // Sort by sales descending
-    repStats.sort((a, b) => b.total_sales - a.total_sales);
+    repStats.sort((a, b) => b.total_sales - a.total_sales || b.total_collections - a.total_collections);
 
     const limit = options?.limit || 20;
     return repStats.slice(0, limit).map((item, index) => ({
