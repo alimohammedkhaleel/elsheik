@@ -8,15 +8,20 @@ interface RateLimitRecord {
 
 const ipBuckets = new Map<string, RateLimitRecord>();
 
-// Cleanup stale rate limit records every 5 minutes
-setInterval(() => {
-  const now = Date.now();
+const MAX_BUCKETS_CAP = 10000;
+
+function cleanupExpiredBuckets(now = Date.now()): void {
   for (const [key, record] of ipBuckets.entries()) {
     if (now > record.resetTime) {
       ipBuckets.delete(key);
     }
   }
-}, 5 * 60 * 1000).unref();
+}
+
+// Cleanup stale rate limit records every 2 minutes
+setInterval(() => {
+  cleanupExpiredBuckets();
+}, 2 * 60 * 1000).unref();
 
 export interface RateLimitOptions {
   windowMs: number;
@@ -48,6 +53,13 @@ export const createRateLimiter = (options: RateLimitOptions) => {
     const record = ipBuckets.get(key);
 
     if (!record || now > record.resetTime) {
+      if (ipBuckets.size >= MAX_BUCKETS_CAP) {
+        cleanupExpiredBuckets(now);
+        if (ipBuckets.size >= MAX_BUCKETS_CAP) {
+          const firstKey = ipBuckets.keys().next().value;
+          if (firstKey) ipBuckets.delete(firstKey);
+        }
+      }
       ipBuckets.set(key, {
         count: 1,
         resetTime: now + windowMs,

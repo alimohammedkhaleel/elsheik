@@ -25,12 +25,12 @@ export const corsOptions: CorsOptions = {
       return callback(null, true);
     }
 
-    // In production, strictly validate against allowed origins
-    if (baseAllowedOrigins.includes(origin)) {
+    // In production, validate against allowed origins
+    if (baseAllowedOrigins.includes(origin) || (origin.endsWith('.vercel.app') && origin.includes('elsheik'))) {
       return callback(null, true);
     }
 
-    return callback(new Error(`Origin ${origin} not allowed by CORS policy`));
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

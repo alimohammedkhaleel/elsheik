@@ -5,6 +5,18 @@ import { Logger } from './utils/logger';
 
 const app = createApp();
 
+// Global Process Crash Prevention Traps
+process.on('uncaughtException', (err) => {
+  Logger.error('[CRITICAL] Uncaught Exception trapped to prevent process termination:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  Logger.error('[CRITICAL] Unhandled Promise Rejection trapped to prevent process termination:', {
+    reason,
+    promise,
+  });
+});
+
 // Only listen locally when NOT on Vercel Serverless
 if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
   const server = app.listen(env.PORT, () => {
@@ -22,6 +34,10 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     }
     Logger.info(`=======================================================`);
   });
+
+  // Keep connections alive and prevent slowloris attacks
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
 
   const handleGracefulShutdown = (signal: string) => {
     Logger.info(`Received ${signal}. Gracefully terminating server...`);

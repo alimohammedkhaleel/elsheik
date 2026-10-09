@@ -16,20 +16,29 @@ export const getDatabasePool = (): Pool => {
     throw new Error(`Database connection failed: ${message}`);
   }
 
+  const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.SERVERLESS);
+  const maxConnections = process.env.DB_POOL_MAX
+    ? parseInt(process.env.DB_POOL_MAX, 10)
+    : isServerless ? 5 : 20;
+
   const poolConfig: PoolConfig = {
     connectionString: env.DATABASE_URL,
     ssl: {
       rejectUnauthorized: false, // Required for Neon PostgreSQL SSL handshakes
     },
-    max: 20, // Max concurrent connections in pool
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    max: maxConnections, // Dynamically adjusted pool size
+    idleTimeoutMillis: isServerless ? 10000 : 30000,
+    connectionTimeoutMillis: 10000, // 10s connection timeout for Neon cold-starts
+    statement_timeout: 20000, // 20s max statement duration (prevents hanging queries)
+    query_timeout: 20000, // 20s query promise timeout
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
   };
 
   pool = new Pool(poolConfig);
 
   pool.on('error', (err) => {
-    console.error('Unexpected error on idle PostgreSQL client:', err.message);
+    console.error('[DB Pool] Unexpected error on idle PostgreSQL client:', err.message);
   });
 
   return pool;
