@@ -18,14 +18,11 @@ import { User, UserRole, UserStatus, CreateUserInput } from '../../types/auth';
 import { useAuth } from '../../context/AuthContext';
 import './UsersPage.css';
 
-const ROLE_LABELS: Record<UserRole, { label: string; class: string }> = {
+const ROLE_LABELS: Record<string, { label: string; class: string }> = {
   ADMIN: { label: 'مدير عام', class: 'role-admin' },
   MANAGER: { label: 'مشرف توزيع', class: 'role-manager' },
   EMPLOYEE: { label: 'مندوب مبيعات', class: 'role-employee' },
-  SALES_REP: { label: 'مندوب مبيعات', class: 'role-employee' },
   COLLECTOR: { label: 'محصل مالي', class: 'role-collector' },
-  ACCOUNTANT: { label: 'محاسب', class: 'role-manager' },
-  DATA_ENTRY: { label: 'مدخل بيانات', class: 'role-employee' },
   CUSTOMER: { label: 'عميل (بوابة)', class: 'role-employee' },
 };
 
@@ -285,10 +282,7 @@ export const UsersPage: React.FC = () => {
               <option value="ADMIN">مدير عام (ADMIN)</option>
               <option value="MANAGER">مشرف توزيع (MANAGER)</option>
               <option value="EMPLOYEE">مندوب مبيعات (EMPLOYEE)</option>
-              <option value="SALES_REP">مندوب مبيعات (SALES_REP)</option>
               <option value="COLLECTOR">محصل مالي (COLLECTOR)</option>
-              <option value="ACCOUNTANT">محاسب (ACCOUNTANT)</option>
-              <option value="DATA_ENTRY">مدخل بيانات (DATA_ENTRY)</option>
               <option value="CUSTOMER">عميل (CUSTOMER)</option>
             </select>
           </div>
@@ -393,11 +387,8 @@ export const UsersPage: React.FC = () => {
                             <option value="ADMIN">مدير عام</option>
                             <option value="MANAGER">مشرف توزيع</option>
                             <option value="EMPLOYEE">مندوب مبيعات</option>
-                            <option value="SALES_REP">مندوب مبيعات (SALES_REP)</option>
                             <option value="COLLECTOR">محصل مالي</option>
-                            <option value="ACCOUNTANT">محاسب</option>
-                            <option value="DATA_ENTRY">مدخل بيانات</option>
-                            <option value="CUSTOMER">عميل</option>
+                            <option value="CUSTOMER">عميل (بوابة)</option>
                           </select>
                         ) : (
                           <span className={`role-badge ${roleMeta.class}`}>
@@ -545,10 +536,7 @@ export const UsersPage: React.FC = () => {
                     }
                   >
                     <option value="EMPLOYEE">مندوب مبيعات (EMPLOYEE)</option>
-                    <option value="SALES_REP">مندوب مبيعات (SALES_REP)</option>
                     <option value="COLLECTOR">محصل مالي (COLLECTOR)</option>
-                    <option value="ACCOUNTANT">محاسب (ACCOUNTANT)</option>
-                    <option value="DATA_ENTRY">مدخل بيانات (DATA_ENTRY)</option>
                     <option value="MANAGER">مشرف قطاع (MANAGER)</option>
                     <option value="ADMIN">مدير عام (ADMIN)</option>
                   </select>

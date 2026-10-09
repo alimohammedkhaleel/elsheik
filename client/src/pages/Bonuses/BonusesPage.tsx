@@ -79,11 +79,15 @@ export const BonusesPage: React.FC = () => {
 
   const fetchReps = async () => {
     try {
-      const users = await userService.getAllUsers();
-      const usersData = Array.isArray(users) ? users : ((users as any)?.data || []);
-      setRepsList(usersData.filter((u: User) => u.role === 'EMPLOYEE' || u.role === 'COLLECTOR'));
+      const res = await userService.getAllUsers();
+      const usersData = Array.isArray(res) ? res : ((res as any)?.data || []);
+      const fieldStaff = usersData.filter(
+        (u: User) => u.status === 'ACTIVE' && (u.role === 'EMPLOYEE' || u.role === 'COLLECTOR')
+      );
+      setRepsList(fieldStaff);
+      return fieldStaff;
     } catch {
-      // ignore
+      return [];
     }
   };
 
@@ -155,8 +159,9 @@ export const BonusesPage: React.FC = () => {
   };
 
   // Transaction Handlers
-  const handleOpenCreateTx = () => {
-    setTxRepId(repsList[0]?.id || '');
+  const handleOpenCreateTx = async () => {
+    const list = await fetchReps();
+    setTxRepId(list[0]?.id || '');
     setTxType('BONUS');
     setTxAmount('');
     setTxReason('');
