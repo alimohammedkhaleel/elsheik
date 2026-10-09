@@ -176,42 +176,78 @@ export class LeaderboardService {
     if (isConfigured) {
       try {
         const limit = options?.limit || 20;
-        // Fully parameterized DB query — no string interpolation
-        // Handles both EMPLOYEE (sales) and COLLECTOR (collections) roles
+
+        /**
+         * FIX: Sales attribution strategy:
+         *  1. Primary: invoices where i.customer_id IN (customers assigned to this rep)
+         *  2. Fallback merged: also include invoices where i.employee_id = u.id
+         *  This covers both cases where invoices are linked via employee_id or via customer assignment.
+         *
+         * Collections: payments where collected_by = u.id (direct collector)
+         *  PLUS payments by customers assigned to this rep (covers employee collecting their own accounts)
+         */
         const sql = `
+          WITH
+          -- All invoices attributed to each rep via their assigned customers OR direct employee_id
+          rep_invoices AS (
+            SELECT
+              COALESCE(i.employee_id, c.assigned_employee_id) AS rep_id,
+              i.id    AS invoice_id,
+              i.total AS invoice_total
+            FROM invoices i
+            JOIN customers c ON c.id = i.customer_id
+            WHERE i.invoice_date BETWEEN $1 AND $2
+              AND (
+                i.employee_id IS NOT NULL
+                OR c.assigned_employee_id IS NOT NULL
+              )
+          ),
+          rep_invoice_agg AS (
+            SELECT
+              rep_id,
+              COUNT(DISTINCT invoice_id)::int    AS invoice_count,
+              COALESCE(SUM(invoice_total), 0)    AS total_sales
+            FROM rep_invoices
+            GROUP BY rep_id
+          ),
+          -- Payments directly made by the collector / representative or from assigned customers
+          rep_payments AS (
+            SELECT 
+              COALESCE(p.collected_by, c.assigned_employee_id) AS rep_id,
+              SUM(p.amount) AS total_collections
+            FROM payments p
+            LEFT JOIN customers c ON c.id = p.customer_id
+            WHERE p.payment_date BETWEEN $1 AND $2
+              AND (p.collected_by IS NOT NULL OR c.assigned_employee_id IS NOT NULL)
+            GROUP BY COALESCE(p.collected_by, c.assigned_employee_id)
+          )
           SELECT
-            u.id as representative_id,
-            u.full_name as representative_name,
+            u.id                                            AS representative_id,
+            u.full_name                                     AS representative_name,
             u.job_title,
-            COUNT(DISTINCT c.id)::int as assigned_customers,
-            COALESCE(SUM(i.total), 0)::numeric as total_sales,
-            COUNT(DISTINCT i.id)::int as invoice_count,
-            COALESCE(p.total_collections, 0)::numeric as total_collections,
-            CASE 
-              WHEN COALESCE(SUM(i.total), 0) > 0 
+            COUNT(DISTINCT c.id)::int                       AS assigned_customers,
+            COALESCE(ri.total_sales, 0)::numeric            AS total_sales,
+            COALESCE(ri.invoice_count, 0)::int              AS invoice_count,
+            COALESCE(rp.total_collections, 0)::numeric      AS total_collections,
+            CASE
+              WHEN COALESCE(ri.total_sales, 0) > 0
               THEN LEAST(100, ROUND(
-                (COALESCE(p.total_collections, 0) / COALESCE(SUM(i.total), 0)) * 100,
-                1
+                (COALESCE(rp.total_collections, 0) / ri.total_sales) * 100, 1
               ))
-              ELSE 100
-            END::numeric as collection_rate
+              ELSE 0
+            END::numeric                                    AS collection_rate
           FROM users u
-          LEFT JOIN customers c 
-            ON c.assigned_employee_id = u.id 
+          LEFT JOIN customers c
+            ON c.assigned_employee_id = u.id
             AND c.status = 'ACTIVE'
-          LEFT JOIN invoices i 
-            ON i.employee_id = u.id 
-            AND i.invoice_date BETWEEN $1 AND $2
-          LEFT JOIN (
-            SELECT collected_by, SUM(amount) as total_collections
-            FROM payments
-            WHERE payment_date BETWEEN $1 AND $2
-              AND collected_by IS NOT NULL
-            GROUP BY collected_by
-          ) p ON p.collected_by = u.id
-          WHERE u.role_code IN ('EMPLOYEE', 'COLLECTOR') 
+          LEFT JOIN rep_invoice_agg ri ON ri.rep_id = u.id
+          LEFT JOIN rep_payments     rp ON rp.rep_id = u.id
+          WHERE u.role_code IN ('EMPLOYEE', 'COLLECTOR')
             AND u.status = 'ACTIVE'
-          GROUP BY u.id, u.full_name, u.job_title, p.total_collections
+          GROUP BY
+            u.id, u.full_name, u.job_title,
+            ri.total_sales, ri.invoice_count,
+            rp.total_collections
           ORDER BY total_sales DESC, total_collections DESC
           LIMIT $3;
         `;

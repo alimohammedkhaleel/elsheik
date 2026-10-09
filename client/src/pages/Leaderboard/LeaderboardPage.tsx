@@ -109,32 +109,95 @@ export const LeaderboardPage: React.FC = () => {
             <div className="leaderboard-podium">
               {/* Rank 02 */}
               <div className="podium-card silver-podium">
-                <div className="podium-rank-label">المركز الثاني</div>
-                <div className="leaderboard-rank-badge leaderboard-rank-2" style={{ margin: '0.5rem auto' }}>02</div>
-                <h3 className="podium-name">{topReps[1].representative_name}</h3>
-                <p className="podium-sub">{topReps[1].job_title}</p>
-                <div className="podium-metric">{Number(topReps[1].total_sales).toLocaleString('ar-EG')} ج.م</div>
-                <p className="podium-sub">نسبة التحصيل: {topReps[1].collection_rate.toFixed(1)}%</p>
+                <div>
+                  <div className="podium-rank-label">المركز الثاني</div>
+                  <div className="leaderboard-rank-badge leaderboard-rank-2" style={{ margin: '0.35rem auto' }}>02</div>
+                  <h3 className="podium-name">{topReps[1].representative_name}</h3>
+                  <p className="podium-sub">{topReps[1].job_title}</p>
+                </div>
+
+                <div className="podium-stats-grid">
+                  <div className="podium-stat-box stat-sales">
+                    <span className="podium-stat-title">إجمالي المبيعات</span>
+                    <span className="podium-stat-number">{Number(topReps[1].total_sales).toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                  <div className="podium-stat-box stat-collections">
+                    <span className="podium-stat-title">إجمالي التحصيلات</span>
+                    <span className="podium-stat-number">{Number(topReps[1].total_collections).toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                </div>
+
+                <div className="podium-footer-info">
+                  <span>{topReps[1].invoice_count} فاتورة</span>
+                  <span>•</span>
+                  <span>{topReps[1].assigned_customers} عميل</span>
+                  <span>•</span>
+                  <span style={{ fontWeight: 700, color: topReps[1].collection_rate >= 80 ? '#059669' : '#d97706' }}>
+                    كفاءة التحصيل: {topReps[1].collection_rate.toFixed(1)}%
+                  </span>
+                </div>
               </div>
 
               {/* Rank 01 */}
               <div className="podium-card gold-podium">
-                <div className="podium-rank-label gold-label">المركز الأول</div>
-                <div className="leaderboard-rank-badge leaderboard-rank-1" style={{ margin: '0.5rem auto' }}>01</div>
-                <h3 className="podium-name" style={{ fontSize: '1.35rem', color: '#b45309' }}>{topReps[0].representative_name}</h3>
-                <p className="podium-sub">{topReps[0].job_title}</p>
-                <div className="podium-metric" style={{ fontSize: '1.8rem' }}>{Number(topReps[0].total_sales).toLocaleString('ar-EG')} ج.م</div>
-                <p className="podium-sub">مبيعات {topReps[0].invoice_count} فاتورة | نسبة التحصيل: {topReps[0].collection_rate.toFixed(1)}%</p>
+                <div>
+                  <div className="podium-rank-label gold-label">المركز الأول 🏆</div>
+                  <div className="leaderboard-rank-badge leaderboard-rank-1" style={{ margin: '0.35rem auto' }}>01</div>
+                  <h3 className="podium-name" style={{ fontSize: '1.25rem', color: '#b45309' }}>{topReps[0].representative_name}</h3>
+                  <p className="podium-sub">{topReps[0].job_title}</p>
+                </div>
+
+                <div className="podium-stats-grid">
+                  <div className="podium-stat-box stat-sales">
+                    <span className="podium-stat-title">إجمالي المبيعات</span>
+                    <span className="podium-stat-number" style={{ fontSize: '1.15rem' }}>{Number(topReps[0].total_sales).toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                  <div className="podium-stat-box stat-collections">
+                    <span className="podium-stat-title">إجمالي التحصيلات</span>
+                    <span className="podium-stat-number" style={{ fontSize: '1.15rem' }}>{Number(topReps[0].total_collections).toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                </div>
+
+                <div className="podium-footer-info">
+                  <span>{topReps[0].invoice_count} فاتورة</span>
+                  <span>•</span>
+                  <span>{topReps[0].assigned_customers} عميل</span>
+                  <span>•</span>
+                  <span style={{ fontWeight: 700, color: topReps[0].collection_rate >= 80 ? '#059669' : '#d97706' }}>
+                    كفاءة التحصيل: {topReps[0].collection_rate.toFixed(1)}%
+                  </span>
+                </div>
               </div>
 
               {/* Rank 03 */}
               <div className="podium-card bronze-podium">
-                <div className="podium-rank-label">المركز الثالث</div>
-                <div className="leaderboard-rank-badge leaderboard-rank-3" style={{ margin: '0.5rem auto' }}>03</div>
-                <h3 className="podium-name">{topReps[2].representative_name}</h3>
-                <p className="podium-sub">{topReps[2].job_title}</p>
-                <div className="podium-metric">{Number(topReps[2].total_sales).toLocaleString('ar-EG')} ج.م</div>
-                <p className="podium-sub">نسبة التحصيل: {topReps[2].collection_rate.toFixed(1)}%</p>
+                <div>
+                  <div className="podium-rank-label">المركز الثالث</div>
+                  <div className="leaderboard-rank-badge leaderboard-rank-3" style={{ margin: '0.35rem auto' }}>03</div>
+                  <h3 className="podium-name">{topReps[2].representative_name}</h3>
+                  <p className="podium-sub">{topReps[2].job_title}</p>
+                </div>
+
+                <div className="podium-stats-grid">
+                  <div className="podium-stat-box stat-sales">
+                    <span className="podium-stat-title">إجمالي المبيعات</span>
+                    <span className="podium-stat-number">{Number(topReps[2].total_sales).toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                  <div className="podium-stat-box stat-collections">
+                    <span className="podium-stat-title">إجمالي التحصيلات</span>
+                    <span className="podium-stat-number">{Number(topReps[2].total_collections).toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                </div>
+
+                <div className="podium-footer-info">
+                  <span>{topReps[2].invoice_count} فاتورة</span>
+                  <span>•</span>
+                  <span>{topReps[2].assigned_customers} عميل</span>
+                  <span>•</span>
+                  <span style={{ fontWeight: 700, color: topReps[2].collection_rate >= 80 ? '#059669' : '#d97706' }}>
+                    كفاءة التحصيل: {topReps[2].collection_rate.toFixed(1)}%
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -241,7 +304,110 @@ export const LeaderboardPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Top 3 Customers Podium */}
+          {!loading && topCustomers.length >= 3 && (
+            <div className="leaderboard-podium">
+              {/* Rank 02 */}
+              <div className="podium-card silver-podium">
+                <div>
+                  <div className="podium-rank-label">المركز الثاني</div>
+                  <div className="leaderboard-rank-badge leaderboard-rank-2" style={{ margin: '0.35rem auto' }}>02</div>
+                  <h3 className="podium-name">{topCustomers[1].customer_name}</h3>
+                  <p className="podium-sub">{topCustomers[1].trade_name || topCustomers[1].city || topCustomers[1].customer_code}</p>
+                </div>
+
+                <div className="podium-stats-grid">
+                  <div className="podium-stat-box stat-sales">
+                    <span className="podium-stat-title">إجمالي المشتريات</span>
+                    <span className="podium-stat-number">{Number(topCustomers[1].sales).toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                  <div className="podium-stat-box stat-collections">
+                    <span className="podium-stat-title">إجمالي السدادات</span>
+                    <span className="podium-stat-number">{Number(topCustomers[1].collections).toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                </div>
+
+                <div className="podium-footer-info">
+                  <span>{topCustomers[1].invoice_count} فاتورة</span>
+                  <span>•</span>
+                  <span>متوسط: {Math.round(topCustomers[1].avg_invoice).toLocaleString('ar-EG')} ج.م</span>
+                  <span>•</span>
+                  <span style={{ fontWeight: 700, color: Number(topCustomers[1].current_balance) > 0 ? '#b91c1c' : '#059669' }}>
+                    الرصيد: {Number(topCustomers[1].current_balance).toLocaleString('ar-EG')} ج.م
+                  </span>
+                </div>
+              </div>
+
+              {/* Rank 01 */}
+              <div className="podium-card gold-podium">
+                <div>
+                  <div className="podium-rank-label gold-label">المركز الأول 👑</div>
+                  <div className="leaderboard-rank-badge leaderboard-rank-1" style={{ margin: '0.35rem auto' }}>01</div>
+                  <h3 className="podium-name" style={{ fontSize: '1.25rem', color: '#b45309' }}>{topCustomers[0].customer_name}</h3>
+                  <p className="podium-sub">{topCustomers[0].trade_name || topCustomers[0].city || topCustomers[0].customer_code}</p>
+                </div>
+
+                <div className="podium-stats-grid">
+                  <div className="podium-stat-box stat-sales">
+                    <span className="podium-stat-title">إجمالي المشتريات</span>
+                    <span className="podium-stat-number" style={{ fontSize: '1.15rem' }}>{Number(topCustomers[0].sales).toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                  <div className="podium-stat-box stat-collections">
+                    <span className="podium-stat-title">إجمالي السدادات</span>
+                    <span className="podium-stat-number" style={{ fontSize: '1.15rem' }}>{Number(topCustomers[0].collections).toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                </div>
+
+                <div className="podium-footer-info">
+                  <span>{topCustomers[0].invoice_count} فاتورة</span>
+                  <span>•</span>
+                  <span>متوسط: {Math.round(topCustomers[0].avg_invoice).toLocaleString('ar-EG')} ج.م</span>
+                  <span>•</span>
+                  <span style={{ fontWeight: 700, color: Number(topCustomers[0].current_balance) > 0 ? '#b91c1c' : '#059669' }}>
+                    الرصيد: {Number(topCustomers[0].current_balance).toLocaleString('ar-EG')} ج.م
+                  </span>
+                </div>
+              </div>
+
+              {/* Rank 03 */}
+              <div className="podium-card bronze-podium">
+                <div>
+                  <div className="podium-rank-label">المركز الثالث</div>
+                  <div className="leaderboard-rank-badge leaderboard-rank-3" style={{ margin: '0.35rem auto' }}>03</div>
+                  <h3 className="podium-name">{topCustomers[2].customer_name}</h3>
+                  <p className="podium-sub">{topCustomers[2].trade_name || topCustomers[2].city || topCustomers[2].customer_code}</p>
+                </div>
+
+                <div className="podium-stats-grid">
+                  <div className="podium-stat-box stat-sales">
+                    <span className="podium-stat-title">إجمالي المشتريات</span>
+                    <span className="podium-stat-number">{Number(topCustomers[2].sales).toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                  <div className="podium-stat-box stat-collections">
+                    <span className="podium-stat-title">إجمالي السدادات</span>
+                    <span className="podium-stat-number">{Number(topCustomers[2].collections).toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                </div>
+
+                <div className="podium-footer-info">
+                  <span>{topCustomers[2].invoice_count} فاتورة</span>
+                  <span>•</span>
+                  <span>متوسط: {Math.round(topCustomers[2].avg_invoice).toLocaleString('ar-EG')} ج.م</span>
+                  <span>•</span>
+                  <span style={{ fontWeight: 700, color: Number(topCustomers[2].current_balance) > 0 ? '#b91c1c' : '#059669' }}>
+                    الرصيد: {Number(topCustomers[2].current_balance).toLocaleString('ar-EG')} ج.م
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="sheikh-card table-wrapper-card">
+            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0' }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
+                جدول تصنيف كبار العملاء ({topCustomers.length})
+              </h3>
+            </div>
             {loading ? (
               <div className="table-loading-box">جاري استخراج بيانات كبار العملاء...</div>
             ) : topCustomers.length === 0 ? (

@@ -138,8 +138,6 @@ export class InvoiceRepository {
         sql += ` LIMIT $${dpIndex} OFFSET $${dpIndex + 1}`;
         dataParams.push(limit, offset);
 
-        const res = await query<Invoice>(sql, dataParams);
-
         // Authoritative filtered count query with full parameterization
         const countSql = `
           SELECT COUNT(i.id) as total 
@@ -147,9 +145,13 @@ export class InvoiceRepository {
           JOIN customers c ON i.customer_id = c.id 
           WHERE ${countClauses.join(' AND ')}
         `;
-        const countRes = await query<{ total: string }>(countSql, countParams);
-        const total = countRes.rows[0] ? parseInt(countRes.rows[0].total, 10) : res.rows.length;
 
+        const [res, countRes] = await Promise.all([
+          query<Invoice>(sql, dataParams),
+          query<{ total: string }>(countSql, countParams),
+        ]);
+
+        const total = countRes.rows[0] ? parseInt(countRes.rows[0].total, 10) : res.rows.length;
         return { data: res.rows, total };
       } catch (err) {
         if (process.env.NODE_ENV === 'production') {

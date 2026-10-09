@@ -119,15 +119,18 @@ export class PaymentRepository {
         sql += ` LIMIT $${dpIndex} OFFSET $${dpIndex + 1}`;
         dataParams.push(limit, offset);
 
-        const res = await query<Payment>(sql, dataParams);
-
         const countSql = `
           SELECT COUNT(p.id) as total 
           FROM payments p 
           JOIN customers c ON p.customer_id = c.id 
           WHERE ${countClauses.join(' AND ')}
         `;
-        const countRes = await query<{ total: string }>(countSql, countParams);
+
+        // Run data + count queries in parallel — halves round-trip time
+        const [res, countRes] = await Promise.all([
+          query<Payment>(sql, dataParams),
+          query<{ total: string }>(countSql, countParams),
+        ]);
         const total = countRes.rows[0] ? parseInt(countRes.rows[0].total, 10) : res.rows.length;
 
         return { data: res.rows, total };
@@ -328,6 +331,7 @@ export class PaymentRepository {
               const newStatus = totalPaid >= invTotal ? 'PAID' : totalPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
               await client.query(`UPDATE invoices SET payment_status = $1, updated_at = NOW() WHERE id = $2;`, [newStatus, input.invoice_id]);
             }
+          } else {
             // General payment: Auto-allocate FIFO to open unpaid/partially-paid invoices for this customer
             const openInvs = await client.query<{ id: number; total: string }>(
               `SELECT id, total

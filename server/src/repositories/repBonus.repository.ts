@@ -170,6 +170,41 @@ export class RepBonusRepository {
   }
 
   async getSummaries(): Promise<RepBonusSummary[]> {
+    const { isConfigured } = validateDatabaseEnv();
+
+    if (isConfigured) {
+      try {
+        /**
+         * Single aggregation query — avoids fetching all rows to application memory.
+         * Uses idx_rbd_rep_type_date (representative_id, type, transaction_date DESC).
+         */
+        const sql = `
+          SELECT
+            rbd.representative_id,
+            u.full_name                                                AS representative_name,
+            COALESCE(SUM(rbd.amount) FILTER (WHERE rbd.type = 'BONUS'),     0)::numeric AS total_bonuses,
+            COALESCE(SUM(rbd.amount) FILTER (WHERE rbd.type = 'DEDUCTION'), 0)::numeric AS total_deductions,
+            COALESCE(SUM(rbd.amount) FILTER (WHERE rbd.type = 'BONUS'),     0)
+              - COALESCE(SUM(rbd.amount) FILTER (WHERE rbd.type = 'DEDUCTION'), 0) AS net_amount,
+            COUNT(*)::int                                              AS transaction_count
+          FROM rep_bonus_deductions rbd
+          JOIN users u ON u.id = rbd.representative_id
+          GROUP BY rbd.representative_id, u.full_name
+          ORDER BY net_amount DESC;
+        `;
+        const res = await query<RepBonusSummary>(sql);
+        return res.rows.map((r) => ({
+          ...r,
+          total_bonuses:    Number(r.total_bonuses),
+          total_deductions: Number(r.total_deductions),
+          net_amount:       Number(r.net_amount),
+        }));
+      } catch (err) {
+        // Fallback to in-memory aggregation
+      }
+    }
+
+    // Memory fallback (test environments)
     const all = await this.findAll();
     const map = new Map<number, RepBonusSummary>();
 

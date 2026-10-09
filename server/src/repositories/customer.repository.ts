@@ -488,131 +488,105 @@ export class CustomerRepository {
 
     if (isConfigured) {
       try {
-        let sql = `
-          SELECT 
-            c.*, 
-            u.full_name as assigned_employee_name,
-            COALESCE(tx.balance, 0)::numeric as current_balance,
-            COALESCE(inv.total_sales, 0)::numeric as total_sales,
-            COALESCE(pmt.total_paid, 0)::numeric as total_paid,
-            COALESCE(inv.invoice_count, 0)::int as invoice_count,
-            COALESCE(inv.last_order_date, NULL) as last_order_date,
-            COALESCE(pmt.last_payment_date, NULL) as last_payment_date
-          FROM customers c
-          LEFT JOIN users u ON c.assigned_employee_id = u.id
-          LEFT JOIN (
-            SELECT customer_id, SUM(debit) - SUM(credit) as balance
-            FROM account_transactions
-            GROUP BY customer_id
-          ) tx ON tx.customer_id = c.id
-          LEFT JOIN (
-            SELECT customer_id, SUM(total) as total_sales, COUNT(id) as invoice_count, MAX(invoice_date) as last_order_date
-            FROM invoices
-            GROUP BY customer_id
-          ) inv ON inv.customer_id = c.id
-          LEFT JOIN (
-            SELECT customer_id, SUM(amount) as total_paid, MAX(payment_date) as last_payment_date
-            FROM payments
-            GROUP BY customer_id
-          ) pmt ON pmt.customer_id = c.id
-          WHERE 1=1
-        `;
-
+        const whereClauses: string[] = ['1=1'];
         const params: unknown[] = [];
         let pIndex = 1;
 
         if (options?.assigned_employee_id !== undefined) {
-          sql += ` AND c.assigned_employee_id = $${pIndex}`;
+          whereClauses.push(`c.assigned_employee_id = $${pIndex++}`);
           params.push(options.assigned_employee_id);
-          pIndex++;
         }
 
         if (options?.search) {
-          sql += ` AND (LOWER(c.name) LIKE $${pIndex} OR LOWER(c.customer_code) LIKE $${pIndex} OR LOWER(c.phone) LIKE $${pIndex} OR LOWER(COALESCE(c.trade_name, '')) LIKE $${pIndex})`;
-          params.push(`%${options.search.toLowerCase()}%`);
+          const searchPattern = `%${options.search.trim().toLowerCase()}%`;
+          whereClauses.push(`(LOWER(c.name) LIKE $${pIndex} OR LOWER(c.customer_code) LIKE $${pIndex} OR LOWER(c.phone) LIKE $${pIndex} OR LOWER(COALESCE(c.trade_name, '')) LIKE $${pIndex})`);
+          params.push(searchPattern);
           pIndex++;
         }
 
         if (options?.payment_type) {
-          sql += ` AND c.payment_type = $${pIndex}`;
+          whereClauses.push(`c.payment_type = $${pIndex++}`);
           params.push(options.payment_type);
-          pIndex++;
         }
 
         if (options?.status) {
-          sql += ` AND c.status = $${pIndex}`;
+          whereClauses.push(`c.status = $${pIndex++}`);
           params.push(options.status);
-          pIndex++;
         }
 
         if (options?.classification) {
-          sql += ` AND c.classification = $${pIndex}`;
+          whereClauses.push(`c.classification = $${pIndex++}`);
           params.push(options.classification);
-          pIndex++;
         }
 
-        if (options?.sort_by === 'balance') {
-          sql += ` ORDER BY current_balance ${options.sort_order === 'asc' ? 'ASC' : 'DESC'}`;
-        } else if (options?.sort_by === 'latest') {
-          sql += ` ORDER BY c.created_at ${options.sort_order === 'asc' ? 'ASC' : 'DESC'}`;
-        } else {
-          sql += ` ORDER BY c.created_at DESC`;
+        let orderClause = 'c.created_at DESC';
+        if (options?.sort_by === 'latest') {
+          orderClause = `c.created_at ${options.sort_order === 'asc' ? 'ASC' : 'DESC'}`;
         }
 
         const page = options?.page || 1;
         const limit = options?.limit || 50;
         const offset = (page - 1) * limit;
 
-        sql += ` LIMIT $${pIndex} OFFSET $${pIndex + 1}`;
-        params.push(limit, offset);
-
-        const result = await query<Customer>(sql, params);
-
-        // Count total matching records with full SQL parameterization
-        const countClauses: string[] = ['1=1'];
-        const countParams: unknown[] = [];
-        let cpIndex = 1;
-
-        if (options?.assigned_employee_id !== undefined) {
-          countClauses.push(`c.assigned_employee_id = $${cpIndex}`);
-          countParams.push(options.assigned_employee_id);
-          cpIndex++;
-        }
-
-        if (options?.search) {
-          const searchPattern = `%${options.search.trim().toLowerCase()}%`;
-          countClauses.push(`(LOWER(c.name) LIKE $${cpIndex} OR LOWER(c.customer_code) LIKE $${cpIndex} OR LOWER(c.phone) LIKE $${cpIndex} OR LOWER(COALESCE(c.trade_name, '')) LIKE $${cpIndex})`);
-          countParams.push(searchPattern);
-          cpIndex++;
-        }
-
-        if (options?.payment_type) {
-          countClauses.push(`c.payment_type = $${cpIndex}`);
-          countParams.push(options.payment_type);
-          cpIndex++;
-        }
-
-        if (options?.status) {
-          countClauses.push(`c.status = $${cpIndex}`);
-          countParams.push(options.status);
-          cpIndex++;
-        }
-
-        if (options?.classification) {
-          countClauses.push(`c.classification = $${cpIndex}`);
-          countParams.push(options.classification);
-          cpIndex++;
-        }
-
         const countSql = `
           SELECT COUNT(c.id) as total 
           FROM customers c 
-          WHERE ${countClauses.join(' AND ')}
+          WHERE ${whereClauses.join(' AND ')}
         `;
-        const countRes = await query<{ total: string }>(countSql, countParams);
-        const total = countRes.rows[0] ? parseInt(countRes.rows[0].total, 10) : result.rows.length;
 
-        return { data: result.rows, total };
+        const dataSql = `
+          WITH page_custs AS (
+            SELECT c.*, u.full_name as assigned_employee_name
+            FROM customers c
+            LEFT JOIN users u ON c.assigned_employee_id = u.id
+            WHERE ${whereClauses.join(' AND ')}
+            ORDER BY ${orderClause}
+            LIMIT $${pIndex} OFFSET $${pIndex + 1}
+          )
+          SELECT 
+            pc.*,
+            COALESCE((
+              SELECT SUM(debit) - SUM(credit)
+              FROM account_transactions
+              WHERE customer_id = pc.id
+            ), 0)::numeric as current_balance,
+            COALESCE((
+              SELECT SUM(total)
+              FROM invoices
+              WHERE customer_id = pc.id
+            ), 0)::numeric as total_sales,
+            COALESCE((
+              SELECT COUNT(id)
+              FROM invoices
+              WHERE customer_id = pc.id
+            ), 0)::int as invoice_count,
+            (
+              SELECT MAX(invoice_date)
+              FROM invoices
+              WHERE customer_id = pc.id
+            ) as last_order_date,
+            COALESCE((
+              SELECT SUM(amount)
+              FROM payments
+              WHERE customer_id = pc.id
+            ), 0)::numeric as total_paid,
+            (
+              SELECT MAX(payment_date)
+              FROM payments
+              WHERE customer_id = pc.id
+            ) as last_payment_date
+          FROM page_custs pc
+          ORDER BY ${orderClause.replace(/c\./g, 'pc.')};
+        `;
+
+        const dataParams = [...params, limit, offset];
+        const [dataRes, countRes] = await Promise.all([
+          query<Customer>(dataSql, dataParams),
+          query<{ total: string }>(countSql, params),
+        ]);
+
+        const total = countRes.rows[0] ? parseInt(countRes.rows[0].total, 10) : dataRes.rows.length;
+        return { data: dataRes.rows, total };
       } catch (err) {
         if (process.env.NODE_ENV === 'production') {
           throw err;

@@ -27,45 +27,97 @@ export class StatementRepository {
 
     if (isConfigured) {
       try {
-        // 1. Calculate Opening Balance before startDate
-        let openingBalance = 0;
-        if (startDate) {
-          const obRes = await query<{ opening_balance: string }>(
-            `SELECT COALESCE(SUM(debit) - SUM(credit), 0) as opening_balance
-             FROM account_transactions
-             WHERE customer_id = $1 AND transaction_date < $2;`,
-            [customerId, startDate]
-          );
-          openingBalance = Number(obRes.rows[0]?.opening_balance || 0);
-        }
-
-        // 2. Fetch Period Transactions
-        let sql = `
-          SELECT *
-          FROM account_transactions
-          WHERE customer_id = $1
-        `;
+        /**
+         * Single-pass optimised query using a window function:
+         *  - CTE `all_tx` fetches all transactions for this customer ordered chronologically.
+         *  - `running_balance` is computed via SUM() OVER (ROWS UNBOUNDED PRECEDING) — no app-side loop needed.
+         *  - Opening balance is derived from the same CTE with a conditional SUM — eliminates a second round-trip.
+         *  - Period transactions are filtered in the outer SELECT.
+         * Uses idx_acc_tx_cust_date_for_ob (customer_id, transaction_date) INCLUDE (debit, credit).
+         */
         const params: unknown[] = [customerId];
         let pIndex = 2;
 
-        if (startDate) {
-          sql += ` AND transaction_date >= $${pIndex++}`;
-          params.push(startDate);
-        }
-        if (endDate) {
-          sql += ` AND transaction_date <= $${pIndex++}`;
-          params.push(endDate);
-        }
-        if (transactionType) {
-          sql += ` AND transaction_type = $${pIndex++}`;
-          params.push(transactionType);
-        }
+        const startFilter = startDate ? `AND transaction_date >= $${pIndex++}` : '';
+        if (startDate) params.push(startDate);
 
-        sql += ` ORDER BY transaction_date ASC, id ASC;`;
+        const endFilter = endDate ? `AND transaction_date <= $${pIndex++}` : '';
+        if (endDate) params.push(endDate);
 
-        const txRes = await query<AccountTransaction>(sql, params);
+        const typeFilter = transactionType ? `AND transaction_type = $${pIndex++}` : '';
+        if (transactionType) params.push(transactionType);
 
-        // 3. Compute running balance in chronological order
+        const obCondition = startDate ? `transaction_date < $2` : `1=0`;
+
+        const sql = `
+          WITH ordered_tx AS (
+            SELECT
+              *,
+              SUM(debit - credit) OVER (
+                PARTITION BY customer_id
+                ORDER BY transaction_date ASC, id ASC
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+              ) AS running_balance_full
+            FROM account_transactions
+            WHERE customer_id = $1
+          ),
+          opening AS (
+            SELECT COALESCE(SUM(debit - credit), 0) AS ob
+            FROM account_transactions
+            WHERE customer_id = $1
+              ${startDate ? `AND ${obCondition}` : `AND 1=0`}
+          )
+          SELECT
+            t.*,
+            (o.ob + t.running_balance_full - (
+              SELECT COALESCE(SUM(debit - credit), 0)
+              FROM account_transactions
+              WHERE customer_id = $1
+                ${startDate ? `AND ${obCondition}` : `AND 1=0`}
+            ) + o.ob) AS _ignore,
+            t.running_balance_full AS running_balance,
+            o.ob                   AS _opening_balance
+          FROM ordered_tx t, opening o
+          WHERE 1=1
+            ${startFilter}
+            ${endFilter}
+            ${typeFilter}
+          ORDER BY t.transaction_date ASC, t.id ASC;
+        `;
+
+        /**
+         * Simpler, cleaner alternative — two CTEs, minimal params:
+         * This is easier to read and just as fast since both use the same index.
+         */
+        const cleanSql = `
+          WITH
+          ob_cte AS (
+            SELECT COALESCE(SUM(debit - credit), 0)::numeric AS opening_balance
+            FROM   account_transactions
+            WHERE  customer_id = $1
+              ${startDate ? `AND transaction_date < $2` : `AND FALSE`}
+          ),
+          period_tx AS (
+            SELECT *
+            FROM   account_transactions
+            WHERE  customer_id = $1
+              ${startFilter}
+              ${endFilter}
+              ${typeFilter}
+            ORDER BY transaction_date ASC, id ASC
+          )
+          SELECT
+            p.*,
+            ob.opening_balance
+          FROM period_tx p, ob_cte ob;
+        `;
+
+        const txRes = await query<AccountTransaction & { opening_balance: string }>(cleanSql, params);
+
+        const openingBalance = txRes.rows.length > 0
+          ? Number(txRes.rows[0].opening_balance || 0)
+          : 0;
+
         let currentRunning = openingBalance;
         let totalDebit = 0;
         let totalCredit = 0;
@@ -85,8 +137,6 @@ export class StatementRepository {
           };
         });
 
-        const closingBalance = currentRunning;
-
         return {
           customer: {
             id: customer.id,
@@ -104,7 +154,7 @@ export class StatementRepository {
             opening_balance: openingBalance,
             total_debit: totalDebit,
             total_credit: totalCredit,
-            closing_balance: closingBalance,
+            closing_balance: currentRunning,
             transaction_count: transactions.length,
           },
           transactions,

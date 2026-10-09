@@ -49,26 +49,38 @@
 
 .podium-card {
   background: #ffffff;
-  border-radius: 10px;
+  border-radius: 12px;
   border: 1px solid #e2e8f0;
-  padding: 1.5rem;
+  padding: 1.25rem 1rem;
   text-align: center;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.podium-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
 }
 
 .podium-card.gold-podium {
   border: 2px solid #d97706;
-  background: #ffffff;
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 40%);
+  box-shadow: 0 6px 16px rgba(217, 119, 6, 0.12);
 }
 
 .podium-card.silver-podium {
   border: 1px solid #94a3b8;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 40%);
 }
 
 .podium-card.bronze-podium {
-  border: 1px solid #b45309;
+  border: 1px solid #d97706;
+  background: linear-gradient(180deg, #fff7ed 0%, #ffffff 40%);
 }
 
 .podium-rank-label {
@@ -79,25 +91,85 @@
 }
 
 .podium-rank-label.gold-label {
-  color: #d97706;
+  color: #b45309;
+  font-weight: 800;
 }
 
 .podium-name {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 800;
   color: #0f172a;
-  margin: 0.4rem 0;
-}
-
-.podium-metric {
-  font-size: 1.4rem;
-  font-weight: 800;
-  color: #d97706;
-  margin: 0.5rem 0;
+  margin: 0.35rem 0 0.15rem 0;
 }
 
 .podium-sub {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   color: #64748b;
-  margin: 0.25rem 0;
+  margin: 0 0 0.75rem 0;
+}
+
+.podium-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.podium-stat-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.5rem 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.podium-stat-box.stat-sales {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.podium-stat-box.stat-collections {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.podium-stat-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.podium-stat-box.stat-sales .podium-stat-title {
+  color: #92400e;
+}
+
+.podium-stat-box.stat-collections .podium-stat-title {
+  color: #166534;
+}
+
+.podium-stat-number {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.podium-stat-box.stat-sales .podium-stat-number {
+  color: #b45309;
+}
+
+.podium-stat-box.stat-collections .podium-stat-number {
+  color: #059669;
+}
+
+.podium-footer-info {
+  margin-top: 0.65rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #e2e8f0;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  font-size: 0.76rem;
+  color: #475569;
 }

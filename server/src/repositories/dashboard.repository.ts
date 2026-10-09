@@ -24,63 +24,83 @@ export class DashboardRepository {
       try {
         const isFiltered = actor && (actor.role === 'EMPLOYEE' || actor.role === 'COLLECTOR');
 
-        // All queries parameterized — no string interpolation for actor.userId
-        const [custResult, invResult, pmtResult, txResult, appResult] = await Promise.all([
-          isFiltered
-            ? query<{ total: string; active: string }>(
-                `SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'ACTIVE') as active
-                 FROM customers WHERE assigned_employee_id = $1;`,
-                [actor!.userId]
-              )
-            : query<{ total: string; active: string }>(
-                `SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'ACTIVE') as active FROM customers;`
-              ),
+        if (isFiltered) {
+          // Single consolidated query for filtered view — avoids 5 round-trips
+          const res = await query<{
+            total_customers: string;
+            active_customers: string;
+            total_sales: string;
+            total_collections: string;
+            outstanding_balance: string;
+            pending_approvals: string;
+          }>(
+            `SELECT
+               (SELECT COUNT(*) FROM customers WHERE assigned_employee_id = $1) AS total_customers,
+               (SELECT COUNT(*) FROM customers WHERE assigned_employee_id = $1 AND status = 'ACTIVE') AS active_customers,
+               (SELECT COALESCE(SUM(total), 0) FROM invoices WHERE employee_id = $1) AS total_sales,
+               (SELECT COALESCE(SUM(p.amount), 0)
+                FROM payments p
+                WHERE p.customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1)
+               ) AS total_collections,
+               (SELECT COALESCE(SUM(i.total - COALESCE(pa.paid, 0)), 0)
+                FROM invoices i
+                LEFT JOIN (
+                  SELECT invoice_id, SUM(amount) AS paid
+                  FROM payment_allocations
+                  GROUP BY invoice_id
+                ) pa ON pa.invoice_id = i.id
+                WHERE i.employee_id = $1
+                  AND i.payment_status <> 'PAID'
+               ) AS outstanding_balance,
+               (SELECT COUNT(*) FROM approval_records WHERE status = 'PENDING') AS pending_approvals`,
+            [actor!.userId]
+          );
 
-          isFiltered
-            ? query<{ total_sales: string }>(
-                `SELECT COALESCE(SUM(total), 0) as total_sales 
-                 FROM invoices 
-                 WHERE customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1);`,
-                [actor!.userId]
-              )
-            : query<{ total_sales: string }>(
-                `SELECT COALESCE(SUM(total), 0) as total_sales FROM invoices;`
-              ),
+          const row = res.rows[0];
+          return {
+            totalCustomers: parseInt(row?.total_customers || '0', 10),
+            activeCustomers: parseInt(row?.active_customers || '0', 10),
+            totalSales: parseFloat(row?.total_sales || '0'),
+            totalCollections: parseFloat(row?.total_collections || '0'),
+            totalOutstandingBalance: parseFloat(row?.outstanding_balance || '0'),
+            pendingApprovalsCount: parseInt(row?.pending_approvals || '0', 10),
+          };
+        }
 
-          isFiltered
-            ? query<{ total_payments: string }>(
-                `SELECT COALESCE(SUM(amount), 0) as total_payments 
-                 FROM payments 
-                 WHERE customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1);`,
-                [actor!.userId]
-              )
-            : query<{ total_payments: string }>(
-                `SELECT COALESCE(SUM(amount), 0) as total_payments FROM payments;`
-              ),
+        // Unfiltered admin view — single consolidated query
+        const res = await query<{
+          total_customers: string;
+          active_customers: string;
+          total_sales: string;
+          total_collections: string;
+          outstanding_balance: string;
+          pending_approvals: string;
+        }>(
+          `SELECT
+             (SELECT COUNT(*) FROM customers) AS total_customers,
+             (SELECT COUNT(*) FROM customers WHERE status = 'ACTIVE') AS active_customers,
+             (SELECT COALESCE(SUM(total), 0) FROM invoices) AS total_sales,
+             (SELECT COALESCE(SUM(amount), 0) FROM payments) AS total_collections,
+             (SELECT COALESCE(SUM(i.total - COALESCE(pa.paid, 0)), 0)
+              FROM invoices i
+              LEFT JOIN (
+                SELECT invoice_id, SUM(amount) AS paid
+                FROM payment_allocations
+                GROUP BY invoice_id
+              ) pa ON pa.invoice_id = i.id
+              WHERE i.payment_status <> 'PAID'
+             ) AS outstanding_balance,
+             (SELECT COUNT(*) FROM approval_records WHERE status = 'PENDING') AS pending_approvals`
+        );
 
-          isFiltered
-            ? query<{ balance: string }>(
-                `SELECT COALESCE(SUM(debit) - SUM(credit), 0) as balance 
-                 FROM account_transactions 
-                 WHERE customer_id IN (SELECT id FROM customers WHERE assigned_employee_id = $1);`,
-                [actor!.userId]
-              )
-            : query<{ balance: string }>(
-                `SELECT COALESCE(SUM(debit) - SUM(credit), 0) as balance FROM account_transactions;`
-              ),
-
-          query<{ pending: string }>(
-            `SELECT COUNT(*) as pending FROM approval_records WHERE status = 'PENDING';`
-          ),
-        ]);
-
+        const row = res.rows[0];
         return {
-          totalCustomers: parseInt(custResult.rows[0]?.total || '0', 10),
-          activeCustomers: parseInt(custResult.rows[0]?.active || '0', 10),
-          totalSales: parseFloat(invResult.rows[0]?.total_sales || '0'),
-          totalCollections: parseFloat(pmtResult.rows[0]?.total_payments || '0'),
-          totalOutstandingBalance: parseFloat(txResult.rows[0]?.balance || '0'),
-          pendingApprovalsCount: parseInt(appResult.rows[0]?.pending || '0', 10),
+          totalCustomers: parseInt(row?.total_customers || '0', 10),
+          activeCustomers: parseInt(row?.active_customers || '0', 10),
+          totalSales: parseFloat(row?.total_sales || '0'),
+          totalCollections: parseFloat(row?.total_collections || '0'),
+          totalOutstandingBalance: parseFloat(row?.outstanding_balance || '0'),
+          pendingApprovalsCount: parseInt(row?.pending_approvals || '0', 10),
         };
       } catch (err) {
         // Fallback to memory
@@ -116,41 +136,77 @@ export class DashboardRepository {
       try {
         const isFiltered = actor && (actor.role === 'EMPLOYEE' || actor.role === 'COLLECTOR');
 
-        // Parameterized query only — actor.userId is $1, never interpolated
-        const baseSql = `
-          SELECT 
-            c.id as customer_id,
-            c.customer_code,
-            c.name as customer_name,
-            c.trade_name,
-            c.phone,
-            COALESCE(SUM(i.total), 0)::numeric as total_sales,
-            COUNT(i.id)::int as invoice_count,
-            COALESCE(AVG(i.total), 0)::numeric as avg_invoice,
-            COALESCE(tx.balance, 0)::numeric as current_balance
-          FROM customers c
-          JOIN invoices i ON i.customer_id = c.id
-          LEFT JOIN (
-            SELECT customer_id, SUM(debit) - SUM(credit) as balance
-            FROM account_transactions
-            GROUP BY customer_id
-          ) tx ON tx.customer_id = c.id
-        `;
+        /**
+         * Optimised query:
+         *  - Uses CTE `inv_agg` to aggregate invoices once (uses idx_invoices_employee_date or idx_invoices_customer_date)
+         *  - Uses CTE `bal_agg` to aggregate payment_allocations once (uses idx_pa_invoice_amount)
+         *  - Final join is between two small result sets instead of raw tables
+         */
+        const sql = isFiltered
+          ? `
+              WITH inv_agg AS (
+                SELECT
+                  customer_id,
+                  COALESCE(SUM(total), 0)::numeric          AS total_sales,
+                  COUNT(*)::int                              AS invoice_count,
+                  COALESCE(AVG(total), 0)::numeric          AS avg_invoice,
+                  COALESCE(SUM(total - COALESCE(pa.paid,0)), 0)::numeric AS current_balance
+                FROM invoices i
+                LEFT JOIN (
+                  SELECT invoice_id, SUM(amount) AS paid
+                  FROM payment_allocations
+                  GROUP BY invoice_id
+                ) pa ON pa.invoice_id = i.id
+                WHERE i.employee_id = $1
+                GROUP BY customer_id
+              )
+              SELECT
+                c.id           AS customer_id,
+                c.customer_code,
+                c.name         AS customer_name,
+                c.trade_name,
+                c.phone,
+                a.total_sales,
+                a.invoice_count,
+                a.avg_invoice,
+                a.current_balance
+              FROM inv_agg a
+              JOIN customers c ON c.id = a.customer_id
+              ORDER BY a.total_sales DESC
+              LIMIT 5;`
+          : `
+              WITH inv_agg AS (
+                SELECT
+                  customer_id,
+                  COALESCE(SUM(total), 0)::numeric          AS total_sales,
+                  COUNT(*)::int                              AS invoice_count,
+                  COALESCE(AVG(total), 0)::numeric          AS avg_invoice,
+                  COALESCE(SUM(total - COALESCE(pa.paid,0)), 0)::numeric AS current_balance
+                FROM invoices i
+                LEFT JOIN (
+                  SELECT invoice_id, SUM(amount) AS paid
+                  FROM payment_allocations
+                  GROUP BY invoice_id
+                ) pa ON pa.invoice_id = i.id
+                GROUP BY customer_id
+              )
+              SELECT
+                c.id           AS customer_id,
+                c.customer_code,
+                c.name         AS customer_name,
+                c.trade_name,
+                c.phone,
+                a.total_sales,
+                a.invoice_count,
+                a.avg_invoice,
+                a.current_balance
+              FROM inv_agg a
+              JOIN customers c ON c.id = a.customer_id
+              ORDER BY a.total_sales DESC
+              LIMIT 5;`;
 
-        const res = isFiltered
-          ? await query<TopBuyerCustomer>(
-              baseSql + `
-              WHERE c.assigned_employee_id = $1
-              GROUP BY c.id, c.customer_code, c.name, c.trade_name, c.phone, tx.balance
-              ORDER BY total_sales DESC LIMIT 5;`,
-              [actor!.userId]
-            )
-          : await query<TopBuyerCustomer>(
-              baseSql + `
-              GROUP BY c.id, c.customer_code, c.name, c.trade_name, c.phone, tx.balance
-              ORDER BY total_sales DESC LIMIT 5;`
-            );
-
+        const params = isFiltered ? [actor!.userId] : [];
+        const res = await query<TopBuyerCustomer>(sql, params);
         return res.rows;
       } catch (err) {
         // Fallback
